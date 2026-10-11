@@ -402,7 +402,7 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
   const produtosManutencao = vendaveis
     .filter((p) => prioridadeCatalogoProduto(p.slug, p.name) === 1)
     .sort((a, b) => a.paraVitrine.sortOrder - b.paraVitrine.sortOrder);
-  const menorPreco = vendaveis.reduce<number | null>((menor, produto) =>
+  const menorPreco = proteses.reduce<number | null>((menor, produto) =>
     produto.priceCents == null ? menor : menor == null ? produto.priceCents : Math.min(menor, produto.priceCents), null);
 
   return (
