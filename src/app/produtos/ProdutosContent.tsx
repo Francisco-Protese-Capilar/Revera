@@ -402,6 +402,7 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
   const produtosManutencao = vendaveis
     .filter((p) => prioridadeCatalogoProduto(p.slug, p.name) === 1)
     .sort((a, b) => a.paraVitrine.sortOrder - b.paraVitrine.sortOrder);
+  const micropeleDestaque = proteses.find((produto) => produto.slug === "micropele-008");
   const menorPreco = proteses.reduce<number | null>((menor, produto) =>
     produto.priceCents == null ? menor : menor == null ? produto.priceCents : Math.min(menor, produto.priceCents), null);
 
@@ -445,8 +446,8 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
           <div className="rounded-xl border border-sand bg-sand/45 p-4">
             <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-sand">
               <Image
-                src={fallbackProduto}
-                alt="Prótese capilar Reverá com acabamento natural"
+                src={micropeleDestaque?.imageUrl ?? fallbackProduto}
+                alt={micropeleDestaque?.imageAlt ?? "Prótese capilar Micropele 0,08 com nó"}
                 fill
                 sizes="(min-width: 1024px) 365px, (min-width: 768px) 36vw, calc(100vw - 132px)"
                 priority
