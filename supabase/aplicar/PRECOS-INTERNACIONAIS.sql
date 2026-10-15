@@ -32,7 +32,7 @@
 -- ---------------------------------------------------------------------
 -- COMO RODAR
 -- ---------------------------------------------------------------------
--- SQL Editor do projeto de PRODUCAO (ngnaemfiytutyplolgxb) — confira o
+-- SQL Editor do projeto de PRODUCAO (desde 15/10/2026: bdqtpleyniwuqrjnhzyy, sa-east-1; este SQL foi aplicado no projeto antigo ngnaemfiytutyplolgxb) — confira o
 -- nome REVERA no topo da tela antes de colar. E idempotente: rodar duas
 -- vezes deixa o mesmo resultado.
 --

@@ -36,7 +36,10 @@ seguro sozinho — pular a ordem é o único jeito de quebrar algo.
 ## Passo 1 — Migrations 8+9+10 na PRODUÇÃO (5 min) — ✅ FEITO em 28/08
 
 1. Abrir o SQL Editor do projeto de produção — conferir no topo da tela que
-   é **REVERA** (`ngnaemfiytutyplolgxb`), NÃO o staging.
+   é **revera-prod-sp** (`bdqtpleyniwuqrjnhzyy`, sa-east-1), NÃO o staging.
+   (Até 15/10/2026 a produção era o projeto REVERA `ngnaemfiytutyplolgxb`,
+   em us-west-2; este passo foi executado lá. O projeto antigo está em
+   somente-leitura e não recebe mais SQL.)
 2. Colar `supabase/aplicar/PRODUCAO-8-9-10.sql` inteiro e rodar. O aviso de
    "destructive operations" é dos drop-e-recria de policy; não apaga dado.
 3. Conferir: `orders` deve responder com as colunas `payment_status`,

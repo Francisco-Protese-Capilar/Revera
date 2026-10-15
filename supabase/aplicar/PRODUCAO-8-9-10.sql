@@ -1,7 +1,7 @@
 -- ===========================================================================
 -- PRODUCAO  MIGRATIONS 8 + 9 + 10 NUM COLAR SO (gerado em 28/08/2026)
 -- ===========================================================================
--- Para o SQL Editor do projeto de PRODUCAO (ngnaemfiytutyplolgxb) quando o
+-- Para o SQL Editor do projeto de PRODUCAO (desde 15/10/2026: bdqtpleyniwuqrjnhzyy, sa-east-1; este SQL foi aplicado no projeto antigo ngnaemfiytutyplolgxb) quando o
 -- Francisco decidir publicar o internacional. As tres sao idempotentes
 -- (if not exists / drop-e-recria) e JA FORAM aplicadas e provadas no
 -- staging (dpeluxmzuuijuveesgtu) em 27-28/08/2026.

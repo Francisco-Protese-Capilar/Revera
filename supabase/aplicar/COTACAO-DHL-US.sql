@@ -63,7 +63,7 @@
 -- ---------------------------------------------------------------------
 -- COMO RODAR
 -- ---------------------------------------------------------------------
--- SQL Editor do projeto de PRODUCAO (ngnaemfiytutyplolgxb) — confira o
+-- SQL Editor do projeto de PRODUCAO (desde 15/10/2026: bdqtpleyniwuqrjnhzyy, sa-east-1; este SQL foi aplicado no projeto antigo ngnaemfiytutyplolgxb) — confira o
 -- nome REVERA no topo da tela. Rodar isto NAO abre venda nenhuma: sem a
 -- chave da Stripe e sem CHECKOUT_PAISES, os EUA seguem indisponiveis.
 -- =====================================================================
