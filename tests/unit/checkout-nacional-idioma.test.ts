@@ -69,6 +69,9 @@ describe("item 1 — textos do formulário nacional", () => {
     expect(form).toContain("const t = textosNacional(idioma);");
     expect(form).toContain("idioma,\n      };");
     expect(form).toContain(": t.finalizar}");
+    // Falha de rede do ViaCEP também fala a língua da tela (Codex, 15/10/2026).
+    expect(form.split("setAvisoCep(t.cepIndisponivel)").length).toBe(3);
+    expect(form).not.toContain("setAvisoCep(\"");
     for (const fixo of ['label="Nome completo"', 'label="CEP"', ': "Finalizar pedido"', '"Calcular frete"', 'Seus dados</h2>']) {
       expect(form, fixo).not.toContain(fixo);
     }

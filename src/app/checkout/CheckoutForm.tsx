@@ -219,7 +219,7 @@ export function CheckoutForm({
       }));
     } catch {
       limparEnderecoBuscado();
-      setAvisoCep("Não foi possível consultar o CEP agora — preencha o endereço manualmente.");
+      setAvisoCep(t.cepIndisponivel);
     } finally {
       setBuscandoCep(false);
     }
