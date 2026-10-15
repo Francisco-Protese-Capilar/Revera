@@ -8,7 +8,6 @@ import { useCart } from "@/components/cart/CartProvider";
 import { Button } from "@/components/ui/Button";
 import { CheckoutSummary } from "@/components/ui/CheckoutSummary";
 import { FormField } from "@/components/ui/FormField";
-import { Toast } from "@/components/ui/Toast";
 import { formatarCPF } from "@/lib/format/cpf";
 import { criarPedidoAction } from "./actions";
 import type { CheckoutInput } from "./schema";
@@ -346,7 +345,9 @@ export function CheckoutForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-8 pb-16" noValidate>
-      {erroGeral ? <Toast message={erroGeral} variant="error" onClose={() => setErroGeral(null)} /> : null}
+      {/* O erro geral é anunciado uma vez só, no bloco role="alert" junto do
+          botão (abaixo), para onde a página rola. Um Toast aqui em cima
+          repetiria o anúncio para leitores de tela. */}
 
       <section className="flex flex-col gap-4">
         <h2 className="font-display text-xl text-ink">Seus dados</h2>

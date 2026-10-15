@@ -17,6 +17,10 @@ describe("checkout nacional — erro junto do botão (15/10/2026)", () => {
     expect(checkout).toContain('role="alert"');
   });
 
+  it("anuncia o erro geral uma vez só (sem Toast duplicado no topo)", () => {
+    expect(checkout).not.toContain("<Toast message={erroGeral}");
+  });
+
   it("rola a página até o erro quando ele aparece", () => {
     expect(checkout).toContain("erroJuntoDoBotaoRef.current?.scrollIntoView");
     expect(checkout).toMatch(/useEffect\(\(\) => \{\s*if \(!erroGeral\) return;/);
@@ -33,12 +37,13 @@ describe("checkout nacional — erro junto do botão (15/10/2026)", () => {
 describe("produto internacional — preço antes de escolher a cor (15/10/2026)", () => {
   it("renderiza o preço mesmo sem cor selecionada", () => {
     expect(produtoIntl).toContain("precoExibidoCents !== null");
-    expect(produtoIntl).toContain("const precoExibidoCents = selected ? selected.priceCents : menorPrecoCents");
+    expect(produtoIntl).toMatch(/const precoExibidoCents =\s*selected && Number\.isInteger\(selected\.priceCents\)/);
     expect(produtoIntl).not.toMatch(/\{selected \? \(\s*<div className="rounded-xl border border-sand p-4">/);
   });
 
   it("usa o menor preço com prefixo 'a partir de' só quando as cores têm preços diferentes", () => {
-    expect(produtoIntl).toContain("Math.min(...variants.map((variant) => variant.priceCents))");
+    expect(produtoIntl).toContain("Math.min(...precosValidos)");
+    expect(produtoIntl).toContain("Number.isInteger(cents) && cents > 0");
     expect(produtoIntl).toContain("!selected && !precosIguais");
   });
 

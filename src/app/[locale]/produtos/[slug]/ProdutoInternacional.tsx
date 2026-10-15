@@ -64,15 +64,21 @@ export function ProdutoInternacional({
   // a página em inglês mostrava só nome, cores e "Add to cart", sem valor).
   // Sem cor escolhida mostra o menor preço do modelo; se os preços das cores
   // diferem, com o prefixo "a partir de".
-  const menorPrecoCents = useMemo(
-    () => (variants.length ? Math.min(...variants.map((variant) => variant.priceCents)) : null),
+  // Só preços válidos (inteiro finito > 0) entram na conta: uma conversão
+  // de câmbio inválida não pode virar "NaN" na tela (Codex, 15/10/2026).
+  const precosValidos = useMemo(
+    () =>
+      variants
+        .map((variant) => variant.priceCents)
+        .filter((cents) => Number.isInteger(cents) && cents > 0),
     [variants]
   );
-  const precosIguais = useMemo(
-    () => variants.every((variant) => variant.priceCents === menorPrecoCents),
-    [variants, menorPrecoCents]
-  );
-  const precoExibidoCents = selected ? selected.priceCents : menorPrecoCents;
+  const menorPrecoCents = precosValidos.length ? Math.min(...precosValidos) : null;
+  const precosIguais = precosValidos.every((cents) => cents === menorPrecoCents);
+  const precoExibidoCents =
+    selected && Number.isInteger(selected.priceCents) && selected.priceCents > 0
+      ? selected.priceCents
+      : menorPrecoCents;
 
   useEffect(() => {
     if (viewed.current || variants.length === 0) return;
