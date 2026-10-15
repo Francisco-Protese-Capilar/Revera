@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { HEADER_HEIGHT_PX } from "@/lib/layout/header";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getStripeProvider } from "@/lib/payments";
@@ -9,6 +10,13 @@ import { confirmarPagamento } from "@/lib/payments/confirmar";
 import { urlDoWebhook } from "@/lib/payments/webhook-url";
 import { baseUrl } from "@/lib/config/urls";
 import { idiomaDoPais } from "@/lib/internacional/paises";
+import { LANG_HTML, type Idioma } from "@/lib/internacional/idioma";
+import { localeManualDosCookies } from "@/lib/i18n/site";
+import {
+  SUPORTE_POR_MOTIVO,
+  textosPagamentoIndisponivel,
+  type MotivoPagamentoIndisponivel,
+} from "./textos-indisponivel";
 import { cotacaoPermiteNovoPayPal, pedidoInternacionalPagavel } from "@/lib/internacional/mercado";
 import { urlCheckoutStripeSegura } from "@/lib/payments/stripe-provider";
 import { urlCheckoutPayPalSegura } from "@/lib/payments/paypal-provider";
@@ -108,12 +116,22 @@ export default async function PagamentoPage({
     redirect(`/pedido/${accessToken}`);
   }
 
-  let idiomaPagamento = idiomaDoPais("BR");
+  /**
+   * IDIOMA DA ETAPA DE PAGAMENTO (A4 da auditoria de 15/10/2026).
+   *
+   * A escolha manual de idioma (seletor do cabeçalho, cookie) vale aqui e
+   * vai ao gateway; sem escolha, o idioma padrão é o do país de entrega do
+   * pedido. O idioma não muda moeda, valor nem país — são os do pedido.
+   */
+  const cookieStore = await cookies();
+  const idiomaManual = localeManualDosCookies((nome) => cookieStore.get(nome)?.value);
+  let idiomaPagamento: Idioma = idiomaManual ?? idiomaDoPais("BR");
   let expiraEmCotacaoInternacional: Date | undefined;
   let cotadaEmInternacional: Date | undefined;
   if (pedido.currency !== "BRL") {
     const { data: endereco } = await supabase.from("addresses").select("country")
       .eq("id", pedido.address_id).maybeSingle();
+    idiomaPagamento = idiomaManual ?? idiomaDoPais(endereco?.country ?? "BR");
     // Revalida antes de criar OU reaproveitar uma sessão: um pedido antigo
     // não contorna país fechado, cotação vencida ou catálogo incompleto.
     const validacaoFrete = await pedidoInternacionalPagavel(
@@ -124,13 +142,12 @@ export default async function PagamentoPage({
       pedido.shipping_quote_id ?? null
     );
     if (!validacaoFrete.pagavel || !validacaoFrete.expiraEm) {
-      return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+      return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
         motivo: "internacional_indisponivel",
       });
     }
     expiraEmCotacaoInternacional = validacaoFrete.expiraEm;
     cotadaEmInternacional = validacaoFrete.cotadaEm;
-    idiomaPagamento = idiomaDoPais(endereco!.country);
   }
   const linkPermitido = (url: string) => pedido.currency === "BRL" || urlCheckoutStripeSegura(url) || urlCheckoutPayPalSegura(url);
 
@@ -191,13 +208,13 @@ export default async function PagamentoPage({
     Date.now() - new Date(pagamentoExistente.created_at as string).getTime() >= 3 * 60 * 60_000 - 60_000;
   if (urlGuardada) {
     if (!linkPermitido(urlGuardada)) {
-      return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+      return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
         motivo: "link_bloqueado",
         checkout: pagamentoExistente?.provider === "infinitepay" ? "infinitepay" : "generico",
       });
     }
     if (linkPayPalExpirado) {
-      return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+      return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
         motivo: "internacional_indisponivel",
       });
     }
@@ -223,13 +240,13 @@ export default async function PagamentoPage({
 
     if (urlRecuperada) {
       if (!linkPermitido(urlRecuperada)) {
-        return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+        return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
           motivo: "link_bloqueado",
           checkout: pagamentoExistente.provider === "infinitepay" ? "infinitepay" : "generico",
         });
       }
       if (linkPayPalExpirado) {
-        return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+        return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
           motivo: "internacional_indisponivel",
         });
       }
@@ -291,7 +308,7 @@ export default async function PagamentoPage({
      */
     const idadeMs = Date.now() - new Date(pagamentoExistente.created_at as string).getTime();
     const estagnada = idadeMs > IDADE_PARA_SUGERIR_CONTATO_MS;
-    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
       motivo: estagnada ? "reserva_travada" : "em_preparacao",
       checkout: pagamentoExistente.provider === "infinitepay" ? "infinitepay" : "generico",
     });
@@ -312,7 +329,7 @@ export default async function PagamentoPage({
           : getReveraInternationalProviderForPreference(pedido.payment_preference);
   } catch (erro) {
     console.error("[pagamento] pagamento não configurado", erro);
-    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
       motivo: "metodo_indisponivel",
     });
   }
@@ -323,7 +340,7 @@ export default async function PagamentoPage({
     pedido.currency !== "BRL" &&
     (!expiraEmCotacaoInternacional || expiraEmCotacaoInternacional.getTime() - Date.now() < 31 * 60_000)
   ) {
-    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
       motivo: "internacional_indisponivel",
     });
   }
@@ -336,7 +353,7 @@ export default async function PagamentoPage({
     // padrão de 3 h após a criação. Só iniciamos a criação nos primeiros
     // 2 h 59 min da janela operacional; os 20 s máximos da chamada e o TTL
     // de 3 h cabem antes do limite, com margem adicional.
-    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
       motivo: "internacional_indisponivel",
     });
   }
@@ -417,7 +434,7 @@ export default async function PagamentoPage({
     // URL pode ser uma criação ainda em curso ou uma resposta do gateway que
     // chegou quando o banco estava indisponível. Nos dois casos criar outro
     // link pode cobrar duas vezes; preservar a reserva é a opção segura.
-    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
       motivo: "em_preparacao",
       checkout: provider.name === "infinitepay" ? "infinitepay" : "generico",
     });
@@ -545,7 +562,7 @@ export default async function PagamentoPage({
           .eq("id", reserva!.id)
           .maybeSingle();
         if (reservaAtual && reservaAtual.status !== "pending") {
-          return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+          return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
             motivo: "em_preparacao",
           });
         }
@@ -574,7 +591,8 @@ export default async function PagamentoPage({
         provider.name,
         resultado,
         reserva!.id,
-        accessToken
+        accessToken,
+        idiomaPagamento
       );
       if (!resultadoRecriacao.ok) return resultadoRecriacao.tela;
       checkoutUrl = resultadoRecriacao.checkoutUrl;
@@ -622,7 +640,8 @@ export default async function PagamentoPage({
           provider.name,
           resultado,
           reserva!.id,
-          accessToken
+          accessToken,
+          idiomaPagamento
         );
         if (!resultadoRecriacao.ok) return resultadoRecriacao.tela;
         checkoutUrl = resultadoRecriacao.checkoutUrl;
@@ -665,7 +684,7 @@ export default async function PagamentoPage({
     // mesmo aviso de "estamos preparando" da reserva preservada — é
     // exatamente o que aconteceu: preservamos por segurança, não por já
     // termos o link.
-    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
       motivo: cobrancaCriada || ambiguo ? "em_preparacao" : "erro_tecnico",
       checkout: provider.name === "infinitepay" ? "infinitepay" : "generico",
     });
@@ -681,7 +700,7 @@ export default async function PagamentoPage({
       .eq("status", "pending")
       .maybeSingle();
     if (erroConferir || !pagamentoSalvo?.provider_payment_id) {
-      return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+      return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
         motivo: "em_preparacao",
       });
     }
@@ -691,7 +710,7 @@ export default async function PagamentoPage({
   // que um catch por perto engoliria — e o cliente veria a tela de erro
   // depois de a cobrança ter sido criada com sucesso.
   if (!linkPermitido(checkoutUrl)) {
-    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+    return telaDePagamentoIndisponivel(pedido.order_number, accessToken, idiomaPagamento, {
       motivo: "link_bloqueado",
       checkout: provider.name === "infinitepay" ? "infinitepay" : "generico",
     });
@@ -735,7 +754,8 @@ async function recriarReservaOuUsarVencedor(
   providerName: string,
   resultado: { providerPaymentId: string | null; checkoutUrl: string },
   reservaAntigaId: string,
-  accessToken: string
+  accessToken: string,
+  idioma: Idioma
 ): Promise<
   { ok: true; checkoutUrl: string } | { ok: false; tela: ReturnType<typeof telaDePagamentoIndisponivel> }
 > {
@@ -778,24 +798,17 @@ async function recriarReservaOuUsarVencedor(
   // mesma de quando perdemos a corrida original.
   return {
     ok: false,
-    tela: telaDePagamentoIndisponivel(pedido.order_number, accessToken, {
+    tela: telaDePagamentoIndisponivel(pedido.order_number, accessToken, idioma, {
       motivo: "em_preparacao",
       checkout: providerName === "infinitepay" ? "infinitepay" : "generico",
     }),
   };
 }
 
-type MotivoPagamentoIndisponivel =
-  | "erro_tecnico"
-  | "em_preparacao"
-  | "reserva_travada"
-  | "metodo_indisponivel"
-  | "internacional_indisponivel"
-  | "link_bloqueado";
-
 function telaDePagamentoIndisponivel(
   numeroPedido: string,
   accessToken: string,
+  idioma: Idioma,
   opcoes: { motivo?: MotivoPagamentoIndisponivel; checkout?: "infinitepay" | "generico" } = {}
 ) {
   const motivo = opcoes.motivo ?? "erro_tecnico";
@@ -806,67 +819,18 @@ function telaDePagamentoIndisponivel(
     motivo === "metodo_indisponivel" ||
     motivo === "link_bloqueado" ||
     motivo === "internacional_indisponivel";
-  const conteudo: Record<
-    MotivoPagamentoIndisponivel,
-    { titulo: string; texto: string; detalhe: string; suporte: string }
-  > = {
-    erro_tecnico: {
-      titulo: "Não conseguimos abrir o pagamento",
-      texto:
-        "Seu pedido está salvo e nada foi cobrado. Tente abrir o pagamento novamente em instantes.",
-      detalhe:
-        "Se continuar acontecendo, veja seu pedido para acompanhar a compra ou falar com a equipe sem criar outro pedido.",
-      suporte: "Falha técnica antes de abrir o checkout.",
-    },
-    em_preparacao: {
-      titulo: "Estamos preparando seu pagamento",
-      texto:
-        "Seu pedido está salvo. Aguarde um instante; para sua segurança, não abrimos uma segunda cobrança.",
-      detalhe:
-        "A página tenta novamente sozinha por alguns segundos. Você também pode tentar de novo manualmente.",
-      suporte: "Existe reserva pendente sem URL pronta ou uma criação ainda em andamento.",
-    },
-    reserva_travada: {
-      titulo: "Pagamento em análise pela equipe",
-      texto:
-        "Seu pedido está salvo, mas esta tentativa demorou mais que o esperado. Não abrimos outra cobrança automaticamente para evitar pagamento duplicado.",
-      detalhe:
-        "Copie o número do pedido ou veja seu pedido para falar com a equipe. A equipe confere a cobrança pendente antes de liberar nova tentativa.",
-      suporte: "Reserva pendente sem URL passou do tempo de espera.",
-    },
-    metodo_indisponivel: {
-      titulo: "Método de pagamento indisponível",
-      texto:
-        "Seu pedido está salvo e nada foi cobrado. O método de pagamento não está disponível neste momento.",
-      detalhe:
-        "Tente novamente em instantes. Se continuar, veja seu pedido para falar com a equipe.",
-      suporte: "Provider de pagamento indisponível ou configuração ausente.",
-    },
-    internacional_indisponivel: {
-      titulo: "Pagamento internacional indisponível",
-      texto:
-        "Seu pedido está salvo, mas ainda não conseguimos abrir pagamento para este destino com segurança.",
-      detalhe:
-        "Preço, frete e país precisam estar ativos antes de cobrar um pedido internacional. Veja seu pedido para falar com a equipe.",
-      suporte: "Pedido internacional sem condição pagável no momento.",
-    },
-    link_bloqueado: {
-      titulo: "Link de pagamento bloqueado",
-      texto:
-        "Seu pedido está salvo e nada foi cobrado. O link retornado pelo pagamento não passou pela validação de segurança.",
-      detalhe:
-        "Tente novamente em instantes. Se continuar, veja seu pedido para falar com a equipe.",
-      suporte: "URL retornada pelo gateway não passou no allowlist.",
-    },
-  };
-  const estado = conteudo[motivo];
+  // Textos nas cinco línguas em textos-indisponivel.ts; o diagnóstico para
+  // a equipe (SUPORTE_POR_MOTIVO) fica em português de propósito.
+  const t = textosPagamentoIndisponivel(idioma);
+  const estado = t.estados[motivo];
 
   return (
     <main
+      lang={LANG_HTML[idioma]}
       className="mx-auto flex w-full max-w-lg flex-col items-center gap-5 px-6 pb-16 text-center"
       style={{ paddingTop: HEADER_HEIGHT_PX + 64 }}
     >
-      <span className="eyebrow-ink">Pedido {numeroPedido}</span>
+      <span className="eyebrow-ink">{t.pedido(numeroPedido)}</span>
       <h1 className="font-display text-3xl text-ink">{estado.titulo}</h1>
       <p className="text-ink/70">{estado.texto}</p>
       <p className="rounded-lg border border-sand bg-paper/70 px-4 py-3 text-sm text-ink/65">
@@ -874,11 +838,11 @@ function telaDePagamentoIndisponivel(
       </p>
       {checkout === "infinitepay" ? (
         <div className="w-full rounded-lg border border-ink/10 bg-white/55 p-4 text-left text-sm text-ink/70">
-          <p className="font-semibold text-ink">Quando o checkout abrir</p>
+          <p className="font-semibold text-ink">{t.quandoAbrir}</p>
           <ul className="mt-2 space-y-1">
-            <li>Pix aparece como opção rápida no checkout da InfinitePay.</li>
-            <li>Cartão de crédito fica disponível para finalizar na hora.</li>
-            <li>Apple Pay ou Google Pay aparecem quando o seu aparelho e navegador permitem.</li>
+            <li>{t.infinitePayPix}</li>
+            <li>{t.infinitePayCartao}</li>
+            <li>{t.infinitePayCarteiras}</li>
           </ul>
         </div>
       ) : null}
@@ -888,32 +852,26 @@ function telaDePagamentoIndisponivel(
           href={`/checkout/pagamento?pedido=${accessToken}`}
           className="inline-flex min-h-toque items-center justify-center rounded-xl bg-gold-metal px-5 py-3 font-semibold text-ink shadow-[0_8px_20px_-10px_rgb(var(--gold-rgb)_/_0.9)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-glow-gold"
         >
-          Tentar pagamento novamente
+          {t.tentarNovamente}
         </a>
         <a
           href={`/pedido/${accessToken}`}
           className="inline-flex min-h-toque items-center justify-center rounded-xl border border-ink/25 bg-paper/40 px-5 py-3 font-semibold text-ink shadow-[inset_0_1px_0_rgb(255_255_255_/_0.55)] transition-all duration-300 hover:-translate-y-0.5 hover:border-gold-deep hover:bg-paper hover:shadow-soft"
         >
-          Ver meu pedido
+          {t.verPedido}
         </a>
-        <CopiarNumeroPedido numeroPedido={numeroPedido} />
+        <CopiarNumeroPedido numeroPedido={numeroPedido} rotulo={t.copiarNumero} rotuloCopiado={t.numeroCopiado} />
       </div>
       {precisaSuporte ? (
-        <p className="text-sm text-ink/60">
-          Se precisar falar com a equipe, envie o número do pedido. Antes de liberar uma nova tentativa, a equipe confere se já existe cobrança pendente.
-        </p>
+        <p className="text-sm text-ink/60">{t.avisoSuporte}</p>
       ) : (
-        <p className="text-sm text-ink/60">
-          Se continuar, abra “Ver meu pedido” para acompanhar a recuperação sem criar outra compra.
-        </p>
+        <p className="text-sm text-ink/60">{t.avisoContinuar}</p>
       )}
       <details className="w-full rounded-lg border border-ink/10 bg-white/45 px-4 py-3 text-left text-sm text-ink/60">
         <summary className="cursor-pointer font-semibold text-ink/70">
-          Informação para suporte
+          {t.infoSuporte}
         </summary>
-        <p className="mt-2">
-          Pedido {numeroPedido}. Diagnóstico: {motivo}. {estado.suporte}
-        </p>
+        <p className="mt-2">{t.diagnostico(numeroPedido, motivo, SUPORTE_POR_MOTIVO[motivo])}</p>
       </details>
     </main>
   );

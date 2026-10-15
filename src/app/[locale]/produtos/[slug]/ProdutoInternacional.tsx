@@ -9,7 +9,7 @@ import { QuantitySelector } from "@/components/ui/QuantitySelector";
 import { HEADER_HEIGHT_PX } from "@/lib/layout/header";
 import { medirAdicionarAoCarrinho, medirVerProduto } from "@/lib/tracking/browser";
 import type { SiteLocale } from "@/lib/i18n/site";
-import { formatarDinheiroParaComprador } from "@/lib/internacional/moeda";
+import { formatarDinheiroParaComprador, type Moeda } from "@/lib/internacional/moeda";
 
 export interface VarianteInternacional {
   id: string;
@@ -32,6 +32,19 @@ const COPY: Record<Exclude<SiteLocale, "pt">, {
   de: { priceFrom: "Ab", eyebrow: "Reverá Haarsystem", choose: "Farbe auswählen", standard: "Standard", selectError: "Wählen Sie vor dem Fortfahren eine Farbe.", addError: "Der Artikel konnte nicht hinzugefügt werden. Versuchen Sie es erneut.", shipping: "Der Versand wird im Checkout anhand Ihrer Adresse live von DHL berechnet. Eventuelle Einfuhrabgaben und Steuern trägt der Empfänger.", adding: "Wird hinzugefügt…", add: "In den Warenkorb", added: "Zum Warenkorb hinzugefügt.", checkout: "Weiter zur Kasse", payment: "Sichere internationale Zahlung", dhl: "DHL-Versand mit Tracking aus Brasilien", checked: "Farbe und Artikel vor Versand geprüft" },
 };
 
+/**
+ * Quem lê em inglês/espanhol/francês/alemão mas compra para o BRASIL
+ * (15/10/2026): o preço é o nacional em BRL e o frete não é DHL. Só os
+ * trechos que falavam de envio internacional mudam; o resto do texto é o
+ * mesmo.
+ */
+const COPY_NACIONAL: Record<Exclude<SiteLocale, "pt">, Pick<(typeof COPY)["en"], "shipping" | "payment" | "dhl">> = {
+  en: { shipping: "Shipping within Brazil is calculated at checkout from your postal code (CEP).", payment: "Secure payment by Pix or card", dhl: "Tracked shipping within Brazil" },
+  es: { shipping: "El envío dentro de Brasil se calcula en el checkout según tu código postal (CEP).", payment: "Pago seguro por Pix o tarjeta", dhl: "Envío rastreado dentro de Brasil" },
+  fr: { shipping: "La livraison au Brésil est calculée au paiement à partir de votre code postal (CEP).", payment: "Paiement sécurisé par Pix ou carte", dhl: "Livraison suivie au Brésil" },
+  de: { shipping: "Der Versand innerhalb Brasiliens wird im Checkout anhand Ihrer Postleitzahl (CEP) berechnet.", payment: "Sichere Zahlung per Pix oder Karte", dhl: "Versand mit Tracking innerhalb Brasiliens" },
+};
+
 export function ProdutoInternacional({
   name,
   description,
@@ -40,16 +53,19 @@ export function ProdutoInternacional({
   locale,
   currency,
   moneyLocale,
+  mercadoNacional = false,
 }: {
   name: string;
   description: string | null;
   imageUrl: string | null;
   variants: VarianteInternacional[];
   locale: Exclude<SiteLocale, "pt">;
-  currency: "USD" | "EUR";
+  currency: Moeda;
   moneyLocale: string;
+  /** Entrega no Brasil lida em outra língua: preço BRL, frete nacional. */
+  mercadoNacional?: boolean;
 }) {
-  const copy = COPY[locale];
+  const copy = mercadoNacional ? { ...COPY[locale], ...COPY_NACIONAL[locale] } : COPY[locale];
   const { adicionarItem, pendente } = useCart();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);

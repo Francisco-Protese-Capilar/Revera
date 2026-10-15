@@ -1,27 +1,24 @@
 import { notFound } from "next/navigation";
-import { cookies, headers } from "next/headers";
-import { checkoutDoPais } from "@/app/checkout/checkout-do-pais";
-import { GEO_COUNTRY_COOKIE, GEO_COUNTRY_HEADER, normalizeSiteLocale } from "@/lib/i18n/site";
+import { checkoutLocalizado } from "@/app/checkout/checkout-do-pais";
+import { normalizeSiteLocale } from "@/lib/i18n/site";
 
 /**
- * O idioma da rota identifica o mercado inicial testado. Manter o país
- * forçado evita depender de cookie/geolocalização quando o clique vem de anúncio.
+ * `/en/checkout`, `/es/checkout`, `/fr/checkout`, `/de/checkout`.
+ *
+ * Até 15/10/2026 esta rota impunha o mercado pelo idioma (EN → EUA), e a
+ * troca de idioma em `/checkout?pais=GB` trocava o destino. Agora o idioma
+ * da rota só traduz; o país vem de `?pais=`, do cookie da jornada ou da
+ * geolocalização, e o mercado do idioma é apenas o último recurso.
  */
 export default async function CheckoutLocalizado({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ pais?: string }>;
 }) {
   const locale = normalizeSiteLocale((await params).locale);
   if (!locale || locale === "pt") notFound();
-  const fallback = { en: "US", es: "ES", fr: "FR", de: "DE" }[locale];
-  const detected = (
-    (await headers()).get(GEO_COUNTRY_HEADER) ??
-    (await headers()).get("x-vercel-ip-country") ??
-    (await cookies()).get(GEO_COUNTRY_COOKIE)?.value
-  )?.trim().toUpperCase();
-  // Só os quatro mercados internacionais testados são inferidos. Um idioma
-  // compartilhado nunca transforma outro país em mercado aberto.
-  const pais = detected === fallback ? detected : fallback;
-  return checkoutDoPais(pais);
+  const { pais } = await searchParams;
+  return checkoutLocalizado(locale, pais);
 }

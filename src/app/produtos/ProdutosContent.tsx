@@ -10,6 +10,7 @@ import { CatalogoGuiado } from "./CatalogoGuiado";
 import { type SiteLocale } from "@/lib/i18n/site";
 import { converterCentavosBrl, obterCotacaoPtax } from "@/lib/internacional/cambio-ptax";
 import { formatarDinheiroParaComprador, type Moeda } from "@/lib/internacional/moeda";
+import { mercadoDaVitrine } from "@/lib/internacional/destino-server";
 import { produtoTraduzido } from "@/lib/i18n/produtos";
 
 export const metadata: Metadata = {
@@ -304,11 +305,12 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
   const copy = CATALOGO_COPY[locale];
   const supabase = await createClient();
   const fallbackProduto = await urlDaFotoDoSite("/media/hero/produto-close-1.jpeg");
-  const mercado = locale === "pt"
-    ? { moeda: "BRL" as Moeda, locale: "pt-BR" }
-    : locale === "en"
-      ? { moeda: "USD" as Moeda, locale: "en-US" }
-      : { moeda: "EUR" as Moeda, locale: locale === "de" ? "de-DE" : locale === "fr" ? "fr-FR" : "es-ES" };
+  // Moeda e formato de número vêm do PAÍS DE ENTREGA, não do idioma
+  // (15/10/2026): inglês não significa dólar — GB lê em inglês e paga em
+  // libra. `nacional` (Brasil) mantém o preço BRL de sempre, inclusive para
+  // quem escolheu ler em outra língua.
+  const { regra: regraDoMercado, nacional } = await mercadoDaVitrine(locale);
+  const mercado = { moeda: regraDoMercado.moedaPadrao as Moeda, locale: regraDoMercado.locale };
 
   const { data: produtos } = await supabase
     .from("products")
@@ -318,7 +320,7 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
     .order("sort_order");
 
   const ids = (produtos ?? []).flatMap((p) => (p.product_variants ?? []).map((v) => v.id as string));
-  const [cotacao, precosMercado] = locale === "pt"
+  const [cotacao, precosMercado] = nacional
     ? [null, []] as const
     : await Promise.all([
         obterCotacaoPtax(mercado.moeda).catch(() => null),
@@ -352,8 +354,8 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
       // todas do mesmo preço hoje; pegar o menor mantém o card honesto se
       // algum dia uma cor custar diferente.
       const precos = variantes
-        .filter((v) => v.isActive && v.stockQty > 0 && v.priceCents > 0 && (locale === "pt" || autorizadas.has(v.id)))
-        .map((v) => locale === "pt" ? v.priceCents : cotacao ? converterCentavosBrl(v.priceCents, cotacao.reaisPorUnidade) : 0)
+        .filter((v) => v.isActive && v.stockQty > 0 && v.priceCents > 0 && (nacional || autorizadas.has(v.id)))
+        .map((v) => nacional ? v.priceCents : cotacao ? converterCentavosBrl(v.priceCents, cotacao.reaisPorUnidade) : 0)
         .filter((v) => v > 0);
 
       const foto = (p.product_media ?? [])
@@ -389,7 +391,7 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
         imageAlt: (foto?.alt_text as string | undefined) ?? null,
       };
     })
-    .filter((p) => produtoEstaVendavel(p.paraVitrine) && (locale === "pt" || p.priceCents != null));
+    .filter((p) => produtoEstaVendavel(p.paraVitrine) && (nacional || p.priceCents != null));
 
   // Ordem pedida pelo Francisco em 21/09/2026: todas as próteses primeiro,
   // produtos (manutenção etc.) só depois — nunca misturados na mesma lista.

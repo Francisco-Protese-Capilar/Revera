@@ -53,23 +53,26 @@ describe("piloto internacional dos Estados Unidos", () => {
     expect(provider).toContain('if (locale !== "pt") router.push(`/${locale}/checkout`)');
   });
 
-  it("mantem o checkout americano na URL canonica em ingles", () => {
+  it("a aba de pais nao troca o idioma: EUA vai para /checkout?pais=US (ou com o prefixo da rota)", () => {
     const checkout = readFileSync(
-      join(process.cwd(), "src/app/checkout/page.tsx"),
+      join(process.cwd(), "src/app/checkout/renderizar-checkout.tsx"),
       "utf8"
     );
 
-    expect(checkout).toContain('redirect("/en/checkout")');
-    expect(checkout).toContain('iso === "US" ? "/en/checkout"');
+    // Até 15/10/2026 a aba dos EUA apontava para /en/checkout e a rota em
+    // inglês impunha o mercado americano; idioma e país agora são
+    // independentes (tests/unit/checkout-pais-idioma.test.ts).
+    expect(checkout).not.toContain('"/en/checkout"');
+    expect(checkout).toContain("hrefDoCheckoutDoPais(iso, localeDaRota)");
   });
 
-  it("nao transforma idioma compartilhado em pais de entrega errado", () => {
+  it("a rota localizada le o pais explicito em vez de impor o mercado do idioma", () => {
     const localizedCheckout = readFileSync(
       join(process.cwd(), "src/app/[locale]/checkout/page.tsx"),
       "utf8"
     );
 
-    expect(localizedCheckout).toContain("detected === fallback");
-    expect(localizedCheckout).toContain("checkoutDoPais(pais)");
+    expect(localizedCheckout).not.toContain("detected === fallback");
+    expect(localizedCheckout).toContain("checkoutLocalizado(locale, pais)");
   });
 });

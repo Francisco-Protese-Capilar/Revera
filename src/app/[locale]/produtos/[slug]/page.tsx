@@ -3,16 +3,10 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { converterCentavosBrl, obterCotacaoPtax } from "@/lib/internacional/cambio-ptax";
 import { ProdutoInternacional, type VarianteInternacional } from "./ProdutoInternacional";
-import { normalizeSiteLocale, localizePath, type SiteLocale } from "@/lib/i18n/site";
+import { normalizeSiteLocale, localizePath } from "@/lib/i18n/site";
 import { produtoTraduzido } from "@/lib/i18n/produtos";
 import type { Moeda } from "@/lib/internacional/moeda";
-
-const MERCADO: Record<Exclude<SiteLocale, "pt">, { moeda: Extract<Moeda, "USD" | "EUR">; moneyLocale: string }> = {
-  en: { moeda: "USD", moneyLocale: "en-US" },
-  es: { moeda: "EUR", moneyLocale: "es-ES" },
-  fr: { moeda: "EUR", moneyLocale: "fr-FR" },
-  de: { moeda: "EUR", moneyLocale: "de-DE" },
-};
+import { mercadoDaVitrine } from "@/lib/internacional/destino-server";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string; slug: string }> }): Promise<Metadata> {
   const { locale: rawLocale, slug } = await params;
@@ -42,7 +36,11 @@ export default async function ProdutoLocalizado({
   const { locale: rawLocale, slug } = await params;
   const locale = normalizeSiteLocale(rawLocale);
   if (!locale || locale === "pt") notFound();
-  const mercado = MERCADO[locale];
+  // Moeda pelo PAÍS DE ENTREGA da jornada, não pelo idioma (15/10/2026):
+  // um britânico lendo em inglês vê libra, não dólar. Brasil (quem escolheu
+  // outra língua mas compra para cá) mantém o preço BRL nacional.
+  const { regra: regraDoMercado, nacional } = await mercadoDaVitrine(locale);
+  const mercado = { moeda: regraDoMercado.moedaPadrao as Moeda, moneyLocale: regraDoMercado.locale };
 
   const supabase = await createClient();
   const { data: product } = await supabase
@@ -57,11 +55,13 @@ export default async function ProdutoLocalizado({
   );
   const ids = active.map((variant) => variant.id as string);
   const [{ data: prices }, { data: colors }, quote] = await Promise.all([
-    supabase.from("variant_prices").select("variant_id").in("variant_id", ids).eq("currency", mercado.moeda).eq("is_active", true).gt("price_cents", 0),
+    nacional
+      ? Promise.resolve({ data: ids.map((variant_id) => ({ variant_id })) })
+      : supabase.from("variant_prices").select("variant_id").in("variant_id", ids).eq("currency", mercado.moeda).eq("is_active", true).gt("price_cents", 0),
     supabase.from("colors").select("id, code, name, photo_url").in("id", active.map((variant) => variant.color_id).filter(Boolean)),
-    obterCotacaoPtax(mercado.moeda).catch(() => null),
+    nacional ? Promise.resolve(null) : obterCotacaoPtax(mercado.moeda).catch(() => null),
   ]);
-  if (!quote) notFound();
+  if (!nacional && !quote) notFound();
 
   const approved = new Set((prices ?? []).map((price) => price.variant_id as string));
   const colorById = new Map((colors ?? []).map((color) => [color.id as string, color]));
@@ -78,7 +78,7 @@ export default async function ProdutoLocalizado({
         colorPhotoUrl: (color?.photo_url as string | null) ?? null,
         stockQty: variant.stock_qty as number,
         priceBrlCents,
-        priceCents: converterCentavosBrl(priceBrlCents, quote.reaisPorUnidade),
+        priceCents: nacional || !quote ? priceBrlCents : converterCentavosBrl(priceBrlCents, quote.reaisPorUnidade),
       };
     });
   if (variants.length === 0) notFound();
@@ -97,6 +97,7 @@ export default async function ProdutoLocalizado({
       locale={locale}
       currency={mercado.moeda}
       moneyLocale={mercado.moneyLocale}
+      mercadoNacional={nacional}
     />
   );
 }

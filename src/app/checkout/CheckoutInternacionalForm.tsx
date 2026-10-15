@@ -141,6 +141,8 @@ export function CheckoutInternacionalForm({ resumo }: { resumo: ResumoInternacio
       trackingConsent: window.localStorage.getItem("revera-cookies-opcionais-v1") === "aceito",
       confirmarCotacao: cotacao?.token ?? null,
       paymentPreference,
+      // Língua da tela, para os erros do servidor voltarem na mesma língua.
+      idioma: resumo.idioma,
     };
 
     setEnviando(true);
