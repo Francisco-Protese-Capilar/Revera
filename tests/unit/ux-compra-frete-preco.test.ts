@@ -77,7 +77,16 @@ describe("checkout nacional — cotação concorrente e envio duplo (Codex r3, 1
   it("trava síncrona impede duas Server Actions no mesmo envio", () => {
     expect(checkout).toContain("if (enviandoRef.current) return;");
     expect(checkout).toContain("enviandoRef.current = true;");
-    expect(checkout.split("enviandoRef.current = false;").length).toBe(3);
+    expect(checkout.split("enviandoRef.current = false;").length).toBe(5);
+    expect(checkout).toContain('startsWith("NEXT_REDIRECT")');
+  });
+
+  it("CEP incompleto invalida a cotação em voo e solta o botão", () => {
+    const ramo = checkout.indexOf("if (digitos.length !== 8) {\n      // CEP apagado");
+    expect(ramo).toBeGreaterThan(0);
+    const trecho = checkout.slice(ramo, ramo + 400);
+    expect(trecho).toContain("cotacaoEmVoo.current += 1;");
+    expect(trecho).toContain("setCotandoFrete(false);");
   });
 });
 

@@ -299,6 +299,10 @@ export function CheckoutForm({
   useEffect(() => {
     const digitos = campos.cep.replace(/\D/g, "");
     if (digitos.length !== 8) {
+      // CEP apagado ou incompleto no meio de uma cotação: a resposta em voo
+      // deixa de valer e o botão não pode ficar preso em "Calculando frete…".
+      cotacaoEmVoo.current += 1;
+      setCotandoFrete(false);
       setFrete(null);
       setAvisoFrete(null);
       ultimoCepCotado.current = "";
@@ -341,7 +345,21 @@ export function CheckoutForm({
     };
 
     setEnviando(true);
-    const resultado = await criarPedidoAction(payload);
+    let resultado: Awaited<ReturnType<typeof criarPedidoAction>>;
+    try {
+      resultado = await criarPedidoAction(payload);
+    } catch (e) {
+      // O redirect() da Server Action chega ao cliente como exceção interna
+      // do Next; ela tem de seguir o caminho dela. Qualquer outra falha
+      // (rede, transporte) vira erro visível e libera nova tentativa.
+      if (typeof (e as { digest?: unknown })?.digest === "string" && String((e as { digest: string }).digest).startsWith("NEXT_REDIRECT")) {
+        throw e;
+      }
+      setEnviando(false);
+      enviandoRef.current = false;
+      setErroGeral("Não conseguimos enviar o pedido agora. Confira sua conexão e tente de novo; nada foi cobrado.");
+      return;
+    }
     setEnviando(false);
 
     // Sucesso não devolve nada: a própria Server Action já fez redirect()
@@ -354,6 +372,10 @@ export function CheckoutForm({
       setErroGeral(resultado.erro);
       setSuporteFreteHref(resultado.suporteWhatsAppUrl ?? null);
       setErros(resultado.camposComErro ?? {});
+    } else {
+      // Sem erro e sem redirect (não deveria acontecer): não deixar o botão
+      // preso para sempre.
+      enviandoRef.current = false;
     }
   }
 
