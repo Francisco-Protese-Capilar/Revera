@@ -355,13 +355,12 @@ export function CheckoutForm({
         trackingConsent,
       };
       resultado = await criarPedidoAction(payload);
-    } catch (e) {
-      // O redirect() da Server Action chega ao cliente como exceção interna
-      // do Next; ela tem de seguir o caminho dela. Qualquer outra falha
-      // (rede, transporte) vira erro visível e libera nova tentativa.
-      if (typeof (e as { digest?: unknown })?.digest === "string" && String((e as { digest: string }).digest).startsWith("NEXT_REDIRECT")) {
-        throw e;
-      }
+    } catch {
+      // Qualquer exceção (rede, transporte, erro síncrono ao montar o
+      // payload) solta a trava e vira erro visível: o botão nunca fica preso.
+      // O redirect() da Server Action não passa por aqui — o Next navega
+      // pelo router do cliente; se um dia passar, soltar a trava durante a
+      // navegação é inofensivo (a página está saindo).
       setEnviando(false);
       enviandoRef.current = false;
       setErroGeral("Não conseguimos enviar o pedido agora. Confira sua conexão e tente de novo; nada foi cobrado.");

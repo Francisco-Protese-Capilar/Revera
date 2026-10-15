@@ -78,7 +78,8 @@ describe("checkout nacional — cotação concorrente e envio duplo (Codex r3, 1
     expect(checkout).toContain("if (enviandoRef.current) return;");
     expect(checkout).toContain("enviandoRef.current = true;");
     expect(checkout.split("enviandoRef.current = false;").length).toBe(5);
-    expect(checkout).toContain('startsWith("NEXT_REDIRECT")');
+    expect(checkout).not.toContain("NEXT_REDIRECT\")");
+    expect(checkout).toContain("} catch {\n      // Qualquer exceção");
     // a montagem do payload (atribuição, localStorage) fica DENTRO do try
     const tryPos = checkout.indexOf("resultado = await criarPedidoAction(payload)");
     const payloadPos = checkout.indexOf("const payload: CheckoutInput = {");
