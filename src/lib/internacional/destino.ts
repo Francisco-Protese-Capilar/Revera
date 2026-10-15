@@ -157,23 +157,25 @@ export function resolverIdiomaDaJornada(entrada: {
 /**
  * Destino que a VITRINE localizada usa para moeda e preços.
  *
- * Só honra escolha/geolocalização de país que o checkout atende hoje
- * (`atendidos` = CHECKOUT_PAISES): vitrine em moeda de mercado fechado seria
- * promessa de preço que o checkout vai negar. Sem destino atendido, cai no
- * mercado padrão do idioma, como antes.
+ * Mesma precedência do checkout (escolha da jornada → país detectado
+ * conhecido → mercado padrão do idioma), para a vitrine nunca mostrar a moeda
+ * de um mercado e o checkout negar outro (Codex, 15/10/2026). `aberto` diz se
+ * o checkout atende esse destino hoje (`atendidos` = CHECKOUT_PAISES); fechado,
+ * a vitrine não precifica e oferece a escolha de destino — nada de preço em
+ * moeda de outro país.
  */
 export function destinoDaVitrine(entrada: {
   locale: SiteLocale;
   escolhido?: string | null;
   detectado?: string | null;
   atendidos: readonly string[];
-}): string {
+}): { iso: string; aberto: boolean } {
   const atendidos = new Set(entrada.atendidos.map((p) => p.toUpperCase()));
-  const escolhido = paisConhecido(entrada.escolhido);
-  if (escolhido && atendidos.has(escolhido)) return escolhido;
-  const detectado = paisConhecido(entrada.detectado);
-  if (detectado && atendidos.has(detectado)) return detectado;
-  return mercadoPadraoDoIdioma(entrada.locale);
+  const iso =
+    paisConhecido(entrada.escolhido) ??
+    paisConhecido(entrada.detectado) ??
+    mercadoPadraoDoIdioma(entrada.locale);
+  return { iso, aberto: atendidos.has(iso) };
 }
 
 /** URL da aba de país do checkout, preservando o prefixo de idioma da rota. */

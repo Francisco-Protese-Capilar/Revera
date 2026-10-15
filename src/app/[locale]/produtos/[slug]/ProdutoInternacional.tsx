@@ -38,6 +38,13 @@ const COPY: Record<Exclude<SiteLocale, "pt">, {
  * trechos que falavam de envio internacional mudam; o resto do texto é o
  * mesmo.
  */
+const COPY_FECHADO: Record<Exclude<SiteLocale, "pt">, { aviso: (pais: string) => string; escolher: string }> = {
+  en: { aviso: (pais) => `Sales to ${pais} are not available yet. Choose a delivery country we ship to and the price will appear.`, escolher: "Choose delivery country" },
+  es: { aviso: (pais) => `Las ventas a ${pais} todavía no están disponibles. Elige un país de entrega atendido y el precio aparecerá.`, escolher: "Elegir país de entrega" },
+  fr: { aviso: (pais) => `Les ventes vers ${pais} ne sont pas encore disponibles. Choisissez un pays de livraison desservi et le prix s’affichera.`, escolher: "Choisir le pays de livraison" },
+  de: { aviso: (pais) => `Verkäufe nach ${pais} sind noch nicht verfügbar. Wählen Sie ein beliefertes Zielland, dann erscheint der Preis.`, escolher: "Zielland wählen" },
+};
+
 const COPY_NACIONAL: Record<Exclude<SiteLocale, "pt">, Pick<(typeof COPY)["en"], "shipping" | "payment" | "dhl">> = {
   en: { shipping: "Shipping within Brazil is calculated at checkout from your postal code (CEP).", payment: "Secure payment by Pix or card", dhl: "Tracked shipping within Brazil" },
   es: { shipping: "El envío dentro de Brasil se calcula en el checkout según tu código postal (CEP).", payment: "Pago seguro por Pix o tarjeta", dhl: "Envío rastreado dentro de Brasil" },
@@ -54,6 +61,7 @@ export function ProdutoInternacional({
   currency,
   moneyLocale,
   mercadoNacional = false,
+  mercadoFechadoPara = null,
 }: {
   name: string;
   description: string | null;
@@ -64,6 +72,11 @@ export function ProdutoInternacional({
   moneyLocale: string;
   /** Entrega no Brasil lida em outra língua: preço BRL, frete nacional. */
   mercadoNacional?: boolean;
+  /**
+   * Nome do destino conhecido que o checkout ainda não atende. Com ele, a
+   * página não mostra preço nem "adicionar": convida a escolher outro país.
+   */
+  mercadoFechadoPara?: string | null;
 }) {
   const copy = mercadoNacional ? { ...COPY[locale], ...COPY_NACIONAL[locale] } : COPY[locale];
   const { adicionarItem, pendente } = useCart();
@@ -154,7 +167,16 @@ export function ProdutoInternacional({
             </p>
           </div>
 
-          {precoExibidoCents !== null ? (
+          {mercadoFechadoPara ? (
+            <div role="status" data-testid="mercado-fechado" className="rounded-xl border border-gold/45 bg-gold/10 p-4">
+              <p className="text-sm leading-6 text-ink/80">{COPY_FECHADO[locale].aviso(mercadoFechadoPara)}</p>
+              <Link href={`/${locale}/checkout`} className="mt-3 inline-block text-sm font-semibold text-ink underline">
+                {COPY_FECHADO[locale].escolher}
+              </Link>
+            </div>
+          ) : null}
+
+          {precoExibidoCents !== null && !mercadoFechadoPara ? (
             <div className="rounded-xl border border-sand p-4" data-testid="preco-internacional">
               <p className="font-display text-3xl font-semibold text-ink">
                 {!selected && !precosIguais ? (
@@ -194,12 +216,14 @@ export function ProdutoInternacional({
           </div>
 
 
-          <div className="flex items-center gap-4">
-            <QuantitySelector value={quantity} onChange={setQuantity} max={selected?.stockQty} />
-            <Button size="lg" className="flex-1" disabled={pendente || !selected} onClick={() => void addToCart()}>
-              {pendente ? copy.adding : copy.add}
-            </Button>
-          </div>
+          {mercadoFechadoPara ? null : (
+            <div className="flex items-center gap-4">
+              <QuantitySelector value={quantity} onChange={setQuantity} max={selected?.stockQty} />
+              <Button size="lg" className="flex-1" disabled={pendente || !selected} onClick={() => void addToCart()}>
+                {pendente ? copy.adding : copy.add}
+              </Button>
+            </div>
+          )}
 
           {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
           {added ? (

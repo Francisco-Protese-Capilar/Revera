@@ -9,6 +9,12 @@ export interface MercadoDaVitrine {
   regra: RegraDePais;
   /** Brasil: preço nacional em BRL, sem PTAX nem variant_prices. */
   nacional: boolean;
+  /**
+   * O checkout atende este destino hoje? Fechado, a vitrine mostra o produto
+   * sem preço e convida a escolher outro país — nunca a moeda de um mercado
+   * que o checkout vai negar.
+   */
+  aberto: boolean;
 }
 
 /**
@@ -16,14 +22,16 @@ export interface MercadoDaVitrine {
  *
  * Antes, `/en/produtos/...` significava USD e `/es|fr|de/...` EUR: um
  * britânico lendo em inglês via dólar americano até chegar ao checkout.
- * Agora o país vem da jornada (escolha no checkout → geolocalização, só
- * entre os destinos que CHECKOUT_PAISES atende) e a moeda é a do país.
- * Sem destino atendido, o mercado padrão do idioma continua valendo.
+ * Agora o país vem da jornada (escolha no checkout → geolocalização
+ * conhecida → mercado padrão do idioma), com a MESMA precedência do checkout,
+ * e a moeda é a do país. Destino que CHECKOUT_PAISES não atende fica
+ * `aberto: false`: a vitrine não precifica em moeda de outro mercado, mostra
+ * o aviso e convida a escolher o país (Codex, 15/10/2026).
  */
 export async function mercadoDaVitrine(locale: SiteLocale): Promise<MercadoDaVitrine> {
-  const iso =
+  const destino =
     locale === "pt"
-      ? "BR"
+      ? { iso: "BR", aberto: true }
       : destinoDaVitrine({
           locale,
           escolhido: (await cookies()).get(PAIS_ESCOLHIDO_COOKIE)?.value,
@@ -33,6 +41,6 @@ export async function mercadoDaVitrine(locale: SiteLocale): Promise<MercadoDaVit
             (await cookies()).get(GEO_COUNTRY_COOKIE)?.value,
           atendidos: paisesDoCheckout(),
         });
-  const regra = regraDoPais(iso) ?? regraDoPais("BR")!;
-  return { regra, nacional: regra.moedaPadrao === "BRL" };
+  const regra = regraDoPais(destino.iso) ?? regraDoPais("BR")!;
+  return { regra, nacional: regra.moedaPadrao === "BRL", aberto: destino.aberto };
 }

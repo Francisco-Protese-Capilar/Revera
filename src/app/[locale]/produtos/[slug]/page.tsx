@@ -7,6 +7,7 @@ import { normalizeSiteLocale, localizePath } from "@/lib/i18n/site";
 import { produtoTraduzido } from "@/lib/i18n/produtos";
 import type { Moeda } from "@/lib/internacional/moeda";
 import { mercadoDaVitrine } from "@/lib/internacional/destino-server";
+import { nomeDoPais } from "@/lib/internacional/paises";
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string; slug: string }> }): Promise<Metadata> {
   const { locale: rawLocale, slug } = await params;
@@ -39,8 +40,11 @@ export default async function ProdutoLocalizado({
   // Moeda pelo PAÍS DE ENTREGA da jornada, não pelo idioma (15/10/2026):
   // um britânico lendo em inglês vê libra, não dólar. Brasil (quem escolheu
   // outra língua mas compra para cá) mantém o preço BRL nacional.
-  const { regra: regraDoMercado, nacional } = await mercadoDaVitrine(locale);
+  const { regra: regraDoMercado, nacional, aberto } = await mercadoDaVitrine(locale);
   const mercado = { moeda: regraDoMercado.moedaPadrao as Moeda, moneyLocale: regraDoMercado.locale };
+  // Destino conhecido que o checkout ainda não atende: a página existe, sem
+  // preço e sem "adicionar" — nunca a moeda de outro mercado.
+  const semPreco = !aberto;
 
   const supabase = await createClient();
   const { data: product } = await supabase
@@ -55,13 +59,16 @@ export default async function ProdutoLocalizado({
   );
   const ids = active.map((variant) => variant.id as string);
   const [{ data: prices }, { data: colors }, quote] = await Promise.all([
-    nacional
+    // Brasil usa a MESMA regra de variante vendável da vitrine nacional
+    // (`is_active && price_cents > 0 && stock_qty > 0`, já aplicada em
+    // `active`); variant_prices é elegibilidade de EXPORTAÇÃO, não do Brasil.
+    nacional || semPreco
       ? Promise.resolve({ data: ids.map((variant_id) => ({ variant_id })) })
       : supabase.from("variant_prices").select("variant_id").in("variant_id", ids).eq("currency", mercado.moeda).eq("is_active", true).gt("price_cents", 0),
     supabase.from("colors").select("id, code, name, photo_url").in("id", active.map((variant) => variant.color_id).filter(Boolean)),
-    nacional ? Promise.resolve(null) : obterCotacaoPtax(mercado.moeda).catch(() => null),
+    nacional || semPreco ? Promise.resolve(null) : obterCotacaoPtax(mercado.moeda).catch(() => null),
   ]);
-  if (!nacional && !quote) notFound();
+  if (!nacional && !semPreco && !quote) notFound();
 
   const approved = new Set((prices ?? []).map((price) => price.variant_id as string));
   const colorById = new Map((colors ?? []).map((color) => [color.id as string, color]));
@@ -78,7 +85,7 @@ export default async function ProdutoLocalizado({
         colorPhotoUrl: (color?.photo_url as string | null) ?? null,
         stockQty: variant.stock_qty as number,
         priceBrlCents,
-        priceCents: nacional || !quote ? priceBrlCents : converterCentavosBrl(priceBrlCents, quote.reaisPorUnidade),
+        priceCents: semPreco ? 0 : nacional || !quote ? priceBrlCents : converterCentavosBrl(priceBrlCents, quote.reaisPorUnidade),
       };
     });
   if (variants.length === 0) notFound();
@@ -98,6 +105,7 @@ export default async function ProdutoLocalizado({
       currency={mercado.moeda}
       moneyLocale={mercado.moneyLocale}
       mercadoNacional={nacional}
+      mercadoFechadoPara={semPreco ? nomeDoPais(regraDoMercado.iso, locale) : null}
     />
   );
 }

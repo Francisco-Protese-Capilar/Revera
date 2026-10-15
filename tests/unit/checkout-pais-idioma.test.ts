@@ -262,19 +262,23 @@ describe("A1 — middleware: país explícito e cookie da jornada", () => {
 describe("A2 — vitrine localizada precifica pelo destino, não pelo idioma", () => {
   const atendidos = PAISES_DA_MATRIZ.split(",");
   it("inglês com destino britânico, canadense ou australiano mantém a moeda do destino", () => {
-    expect(destinoDaVitrine({ locale: "en", detectado: "GB", atendidos })).toBe("GB");
-    expect(destinoDaVitrine({ locale: "en", detectado: "CA", atendidos })).toBe("CA");
-    expect(destinoDaVitrine({ locale: "en", escolhido: "AU", detectado: "US", atendidos })).toBe("AU");
+    expect(destinoDaVitrine({ locale: "en", detectado: "GB", atendidos })).toEqual({ iso: "GB", aberto: true });
+    expect(destinoDaVitrine({ locale: "en", detectado: "CA", atendidos })).toEqual({ iso: "CA", aberto: true });
+    expect(destinoDaVitrine({ locale: "en", escolhido: "AU", detectado: "US", atendidos })).toEqual({ iso: "AU", aberto: true });
     expect(PAISES.GB!.moedaPadrao).toBe("GBP");
   });
   it("brasileiro lendo em inglês continua no Brasil, em real", () => {
-    expect(destinoDaVitrine({ locale: "en", detectado: "BR", atendidos })).toBe("BR");
+    expect(destinoDaVitrine({ locale: "en", detectado: "BR", atendidos })).toEqual({ iso: "BR", aberto: true });
   });
-  it("país não atendido ou desconhecido cai no mercado padrão do idioma", () => {
-    expect(destinoDaVitrine({ locale: "en", detectado: "JP", atendidos })).toBe("US");
-    expect(destinoDaVitrine({ locale: "es", detectado: "MX", atendidos })).toBe("ES");
-    expect(destinoDaVitrine({ locale: "de", escolhido: "MX", detectado: "CH", atendidos })).toBe("DE");
-    expect(destinoDaVitrine({ locale: "fr", detectado: "GB", atendidos: ["BR", "US"] })).toBe("FR");
+  it("país desconhecido cai no mercado padrão do idioma", () => {
+    expect(destinoDaVitrine({ locale: "en", detectado: "JP", atendidos })).toEqual({ iso: "US", aberto: true });
+    expect(destinoDaVitrine({ locale: "de", escolhido: "../", detectado: "CH", atendidos })).toEqual({ iso: "DE", aberto: true });
+  });
+  it("país conhecido mas fechado é preservado como fechado — a vitrine não precifica em moeda de outro mercado", () => {
+    expect(destinoDaVitrine({ locale: "es", detectado: "MX", atendidos })).toEqual({ iso: "MX", aberto: false });
+    expect(destinoDaVitrine({ locale: "de", escolhido: "MX", detectado: "DE", atendidos })).toEqual({ iso: "MX", aberto: false });
+    expect(destinoDaVitrine({ locale: "fr", detectado: "GB", atendidos: ["BR", "US"] })).toEqual({ iso: "GB", aberto: false });
+    expect(destinoDaVitrine({ locale: "fr", atendidos: ["BR", "US"] })).toEqual({ iso: "FR", aberto: false });
   });
 });
 
@@ -292,6 +296,8 @@ vi.mock("next/headers", () => ({
   headers: async () => ({ get: (nome: string) => estado.headers[nome] ?? null }),
 }));
 vi.mock("@/app/checkout/CheckoutForm", () => ({ CheckoutForm: () => null }));
+vi.mock("@/components/cart/CartProvider", () => ({ useCart: () => ({ adicionarItem: vi.fn(), pendente: false }) }));
+vi.mock("@/lib/conteudo/fotos-do-site", () => ({ urlDaFotoDoSite: async (path: string) => path }));
 vi.mock("@/app/checkout/CheckoutInternacionalForm", () => ({ CheckoutInternacionalForm: () => null }));
 vi.mock("@/lib/cart/store", () => ({
   lerCarrinhoCompleto: vi.fn(async () => ({
@@ -492,22 +498,65 @@ describe("A2 — mercadoDaVitrine e página de produto localizada", () => {
     };
   });
 
-  it("cookie de país escolhido e atendido vence a geolocalização; inválido é ignorado", async () => {
+  it("cookie de país escolhido vence a geolocalização; inválido é ignorado", async () => {
     const { mercadoDaVitrine } = await import("@/lib/internacional/destino-server");
     estado.cookies = { [PAIS_ESCOLHIDO_COOKIE]: "GB" };
     estado.headers = { [GEO_COUNTRY_HEADER]: "US" };
-    expect((await mercadoDaVitrine("en")).regra.moedaPadrao).toBe("GBP");
+    expect(await mercadoDaVitrine("en")).toMatchObject({ nacional: false, aberto: true, regra: { iso: "GB", moedaPadrao: "GBP" } });
     estado.cookies = { [PAIS_ESCOLHIDO_COOKIE]: "../etc" };
-    expect((await mercadoDaVitrine("en")).regra.moedaPadrao).toBe("USD");
+    expect(await mercadoDaVitrine("en")).toMatchObject({ aberto: true, regra: { iso: "US", moedaPadrao: "USD" } });
   });
 
-  it("país fechado em CHECKOUT_PAISES não precifica a vitrine; cai no mercado do idioma", async () => {
+  it("país conhecido fora de CHECKOUT_PAISES fica como destino FECHADO, igual ao checkout — nunca vira o mercado do idioma", async () => {
     vi.stubEnv("CHECKOUT_PAISES", "BR,US,DE");
     const { mercadoDaVitrine } = await import("@/lib/internacional/destino-server");
     estado.cookies = { [PAIS_ESCOLHIDO_COOKIE]: "GB" };
     estado.headers = { [GEO_COUNTRY_HEADER]: "CA" };
-    expect((await mercadoDaVitrine("en")).regra.moedaPadrao).toBe("USD");
-    expect((await mercadoDaVitrine("fr")).regra.moedaPadrao).toBe("EUR");
+    expect(await mercadoDaVitrine("en")).toMatchObject({ aberto: false, regra: { iso: "GB" } });
+    estado.cookies = {};
+    expect(await mercadoDaVitrine("en")).toMatchObject({ aberto: false, regra: { iso: "CA" } });
+    // Até o mercado padrão do idioma pode estar fechado: FR fora da lista.
+    estado.headers = {};
+    expect(await mercadoDaVitrine("fr")).toMatchObject({ aberto: false, regra: { iso: "FR" } });
+    // Mesmo destino no checkout: GB conhecido, fechado → indisponibilidade.
+    expect(resolverPaisDeEntrega({ escolhido: "GB", detectado: "CA" })).toEqual({ iso: "GB", origem: "escolhido" });
+  });
+
+  it("destino fechado: produto sem preço, sem 'adicionar', com convite para escolher o país", async () => {
+    vi.stubEnv("CHECKOUT_PAISES", "BR,US,DE");
+    estado.headers = { [GEO_COUNTRY_HEADER]: "GB" };
+    const { default: ProdutoLocalizado } = await import("@/app/[locale]/produtos/[slug]/page");
+    const { ProdutoInternacional } = await import("@/app/[locale]/produtos/[slug]/ProdutoInternacional");
+    const { obterCotacaoPtax } = await import("@/lib/internacional/cambio-ptax");
+    (obterCotacaoPtax as unknown as ReturnType<typeof vi.fn>).mockClear();
+    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }) });
+    const el = encontrar(arvore, (x) => x.type === ProdutoInternacional)!;
+    expect(el.props.mercadoFechadoPara).toBe("United Kingdom");
+    expect((el.props.variants as Array<{ priceCents: number }>).every((v) => v.priceCents === 0)).toBe(true);
+    expect(obterCotacaoPtax).not.toHaveBeenCalled();
+    // E o componente de fato esconde preço e botão, mostrando o aviso.
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const html = renderToStaticMarkup(
+      React.createElement(ProdutoInternacional, {
+        name: "Micropele", description: null, imageUrl: null, locale: "en", currency: "GBP", moneyLocale: "en-GB",
+        variants: [{ id: "v", colorId: null, colorCode: "1B", colorName: null, colorPhotoUrl: null, stockQty: 2, priceBrlCents: 65000, priceCents: 0 }],
+        mercadoFechadoPara: "United Kingdom",
+      })
+    );
+    expect(html).toContain("Sales to United Kingdom are not available yet");
+    expect(html).not.toContain("preco-internacional");
+    expect(html).not.toContain("Add to cart");
+    expect(html).toContain('href="/en/checkout"');
+  });
+
+  it("destino fechado: catálogo lista as peças sem preço e com o aviso", async () => {
+    vi.stubEnv("CHECKOUT_PAISES", "BR,US,DE");
+    estado.headers = { [GEO_COUNTRY_HEADER]: "GB" };
+    const { ProdutosContent } = await import("@/app/produtos/ProdutosContent");
+    const arvore = await ProdutosContent({ locale: "en" });
+    const aviso = encontrar(arvore, (el) => el.props["data-testid"] === "mercado-fechado");
+    expect(aviso).not.toBeNull();
+    expect(JSON.stringify(aviso!.props.children)).toContain("Sales to United Kingdom are not available yet");
   });
 
   it("português sem prefixo é sempre a vitrine nacional, mesmo com destino escolhido", async () => {
@@ -545,6 +594,21 @@ describe("A2 — mercadoDaVitrine e página de produto localizada", () => {
     expect(el.props.mercadoNacional).toBe(true);
     const variantes = el.props.variants as Array<{ id: string; priceCents: number }>;
     expect(variantes.map((v) => v.priceCents)).toEqual([65000, 65000]);
+  });
+
+  it("destino BR usa a regra de variante vendável da vitrine nacional: sem estoque ou sem preço não entra", async () => {
+    estado.headers = { [GEO_COUNTRY_HEADER]: "BR" };
+    vitrine.produto!.product_variants = [
+      { id: "ok", color_id: null, price_cents: 65000, stock_qty: 1, is_active: true },
+      { id: "sem-estoque", color_id: null, price_cents: 65000, stock_qty: 0, is_active: true },
+      { id: "sem-preco", color_id: null, price_cents: 0, stock_qty: 5, is_active: true },
+      { id: "inativa", color_id: null, price_cents: 65000, stock_qty: 5, is_active: false },
+    ];
+    const { default: ProdutoLocalizado } = await import("@/app/[locale]/produtos/[slug]/page");
+    const { ProdutoInternacional } = await import("@/app/[locale]/produtos/[slug]/ProdutoInternacional");
+    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }) });
+    const el = encontrar(arvore, (x) => x.type === ProdutoInternacional)!;
+    expect((el.props.variants as Array<{ id: string }>).map((v) => v.id)).toEqual(["ok"]);
   });
 });
 

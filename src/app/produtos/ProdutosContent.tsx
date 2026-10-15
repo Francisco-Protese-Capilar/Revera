@@ -11,6 +11,7 @@ import { type SiteLocale } from "@/lib/i18n/site";
 import { converterCentavosBrl, obterCotacaoPtax } from "@/lib/internacional/cambio-ptax";
 import { formatarDinheiroParaComprador, type Moeda } from "@/lib/internacional/moeda";
 import { mercadoDaVitrine } from "@/lib/internacional/destino-server";
+import { nomeDoPais } from "@/lib/internacional/paises";
 import { produtoTraduzido } from "@/lib/i18n/produtos";
 
 export const metadata: Metadata = {
@@ -84,6 +85,9 @@ export const CATALOGO_COPY: Record<SiteLocale, {
   guiaTexto: string;
   guiaBotao: string;
   provas: string[];
+  /** Destino conhecido que o checkout ainda não atende: vitrine sem preço. */
+  mercadoFechado: (pais: string) => string;
+  mercadoFechadoLink: string;
 }> = {
   pt: {
     eyebrow: "Prótese capilar natural",
@@ -92,6 +96,8 @@ export const CATALOGO_COPY: Record<SiteLocale, {
       "Peças Reverá com acabamento natural, conferência antes do envio e compra online com frete calculado por CEP. Você compara a cartela, escolhe a cor mais próxima e segue para o checkout.",
     tags: ["Micropele", "Full lace", "Cacheadas", "Afro"],
     vazio: "Nenhuma peça disponível para compra neste momento.",
+    mercadoFechado: (pais) => `As vendas para ${pais} ainda não estão disponíveis. Os preços aparecem depois de escolher um país de entrega atendido.`,
+    mercadoFechadoLink: "Escolher país de entrega",
     manutencaoEyebrow: "Depois da prótese",
     manutencaoTitulo: "Produtos",
     manutencaoTexto: "Itens de manutenção e cuidado para preservar a peça no uso diário.",
@@ -120,6 +126,8 @@ export const CATALOGO_COPY: Record<SiteLocale, {
       "Choose by natural look, texture and base. Every piece is checked before shipping; color is selected on each model page.",
     tags: ["Micropele", "Full lace", "Curly", "Afro"],
     vazio: "No piece is available for purchase at this moment.",
+    mercadoFechado: (pais) => `Sales to ${pais} are not available yet. Prices appear once you choose a delivery country we ship to.`,
+    mercadoFechadoLink: "Choose delivery country",
     manutencaoEyebrow: "After the hair system",
     manutencaoTitulo: "Products",
     manutencaoTexto: "Maintenance and care items to preserve the piece in daily use.",
@@ -160,6 +168,8 @@ export const CATALOGO_COPY: Record<SiteLocale, {
       "Elige por naturalidad, textura y base. Todas las piezas pasan por revision antes del envio; el color se define en la pagina de cada modelo.",
     tags: ["Micropele", "Full lace", "Rizadas", "Afro"],
     vazio: "No hay piezas disponibles para compra en este momento.",
+    mercadoFechado: (pais) => `Las ventas a ${pais} todavía no están disponibles. Los precios aparecen al elegir un país de entrega atendido.`,
+    mercadoFechadoLink: "Elegir país de entrega",
     manutencaoEyebrow: "Despues de la protesis",
     manutencaoTitulo: "Productos",
     manutencaoTexto: "Itens de mantenimiento y cuidado para preservar la pieza en el uso diario.",
@@ -200,6 +210,8 @@ export const CATALOGO_COPY: Record<SiteLocale, {
       "Choisissez selon l'aspect naturel, la texture et la base. Chaque piece est verifiee avant expedition; la couleur est choisie sur la page de chaque modele.",
     tags: ["Micropele", "Full lace", "Bouclees", "Afro"],
     vazio: "Aucune piece n'est disponible a l'achat pour le moment.",
+    mercadoFechado: (pais) => `Les ventes vers ${pais} ne sont pas encore disponibles. Les prix s’affichent après le choix d’un pays de livraison desservi.`,
+    mercadoFechadoLink: "Choisir le pays de livraison",
     manutencaoEyebrow: "Apres la prothese",
     manutencaoTitulo: "Produits",
     manutencaoTexto: "Articles d'entretien et de soin pour preserver la piece au quotidien.",
@@ -240,6 +252,8 @@ export const CATALOGO_COPY: Record<SiteLocale, {
       "Wahlen Sie nach naturlicher Optik, Textur und Basis. Jedes System wird vor dem Versand gepruft; die Farbe wird auf der jeweiligen Modellseite gewahlt.",
     tags: ["Micropele", "Full lace", "Lockig", "Afro"],
     vazio: "Zurzeit ist kein System zum Kauf verfugbar.",
+    mercadoFechado: (pais) => `Verkäufe nach ${pais} sind noch nicht verfügbar. Preise erscheinen, sobald Sie ein beliefertes Zielland wählen.`,
+    mercadoFechadoLink: "Zielland wählen",
     manutencaoEyebrow: "Nach dem Haarsystem",
     manutencaoTitulo: "Produkte",
     manutencaoTexto: "Pflege- und Wartungsartikel, um das System im Alltag zu erhalten.",
@@ -309,7 +323,7 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
   // (15/10/2026): inglês não significa dólar — GB lê em inglês e paga em
   // libra. `nacional` (Brasil) mantém o preço BRL de sempre, inclusive para
   // quem escolheu ler em outra língua.
-  const { regra: regraDoMercado, nacional } = await mercadoDaVitrine(locale);
+  const { regra: regraDoMercado, nacional, aberto } = await mercadoDaVitrine(locale);
   const mercado = { moeda: regraDoMercado.moedaPadrao as Moeda, locale: regraDoMercado.locale };
 
   const { data: produtos } = await supabase
@@ -320,7 +334,9 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
     .order("sort_order");
 
   const ids = (produtos ?? []).flatMap((p) => (p.product_variants ?? []).map((v) => v.id as string));
-  const [cotacao, precosMercado] = nacional
+  // Mercado fechado: sem PTAX e sem variant_prices — a vitrine lista as peças
+  // sem preço e convida a escolher outro destino (banner abaixo).
+  const [cotacao, precosMercado] = nacional || !aberto
     ? [null, []] as const
     : await Promise.all([
         obterCotacaoPtax(mercado.moeda).catch(() => null),
@@ -391,7 +407,7 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
         imageAlt: (foto?.alt_text as string | undefined) ?? null,
       };
     })
-    .filter((p) => produtoEstaVendavel(p.paraVitrine) && (nacional || p.priceCents != null));
+    .filter((p) => produtoEstaVendavel(p.paraVitrine) && (nacional || !aberto || p.priceCents != null));
 
   // Ordem pedida pelo Francisco em 21/09/2026: todas as próteses primeiro,
   // produtos (manutenção etc.) só depois — nunca misturados na mesma lista.
@@ -474,6 +490,22 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
           </div>
         </div>
       </header>
+
+      {!aberto ? (
+        <section
+          role="status"
+          data-testid="mercado-fechado"
+          className="flex flex-col gap-3 rounded-2xl border border-gold/45 bg-gold/10 p-5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="text-sm leading-6 text-ink/80">{copy.mercadoFechado(nomeDoPais(regraDoMercado.iso, locale))}</p>
+          <a
+            href={`/${locale}/checkout`}
+            className="min-h-toque shrink-0 rounded-xl border border-ink/25 bg-paper px-5 py-3 text-center text-sm font-semibold text-ink"
+          >
+            {copy.mercadoFechadoLink}
+          </a>
+        </section>
+      ) : null}
 
       {proteses.length > 0 ? <CatalogoGuiado locale={locale} produtos={proteses} currency={mercado.moeda} moneyLocale={mercado.locale} /> : (
         <p className="text-ink/70">
