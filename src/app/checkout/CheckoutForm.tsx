@@ -84,6 +84,13 @@ export function CheckoutForm({
   // falha de frete). O erro agora também aparece junto do botão e a página
   // rola até ele.
   const erroJuntoDoBotaoRef = useRef<HTMLDivElement | null>(null);
+  // Número da cotação em voo. Uma resposta antiga (CEP trocado no meio) não
+  // pode gravar frete nem liberar o botão por cima da cotação atual
+  // (Codex, 15/10/2026).
+  const cotacaoEmVoo = useRef(0);
+  // Trava síncrona do envio: dois submits no mesmo tick (Enter + clique)
+  // não podem disparar duas Server Actions.
+  const enviandoRef = useRef(false);
   const [suporteFreteHref, setSuporteFreteHref] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
@@ -234,8 +241,13 @@ export function CheckoutForm({
     if (ultimoCepCotado.current === chaveCotacao) return;
     ultimoCepCotado.current = chaveCotacao;
 
+    const minhaCotacao = ++cotacaoEmVoo.current;
+    const souAtual = () => cotacaoEmVoo.current === minhaCotacao;
     setCotandoFrete(true);
     setAvisoFrete(null);
+    // Frete do CEP anterior some já: o total não pode mostrar valor velho
+    // enquanto a cotação nova corre.
+    setFrete(null);
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), FRETE_TIMEOUT_MS);
     try {
@@ -252,6 +264,7 @@ export function CheckoutForm({
         etaDays?: number;
       };
 
+      if (!souAtual()) return;
       if (!r.ok || !dados.disponivel || typeof dados.priceCents !== "number") {
         ultimoCepCotado.current = "";
         setFrete(null);
@@ -269,6 +282,7 @@ export function CheckoutForm({
         etaDays: dados.etaDays ?? 0,
       });
     } catch {
+      if (!souAtual()) return;
       ultimoCepCotado.current = "";
       setFrete(null);
       setAvisoFrete(
@@ -278,7 +292,7 @@ export function CheckoutForm({
       );
     } finally {
       window.clearTimeout(timeout);
-      setCotandoFrete(false);
+      if (souAtual()) setCotandoFrete(false);
     }
   }
 
@@ -303,10 +317,13 @@ export function CheckoutForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setErroGeral(null);
     setSuporteFreteHref(null);
 
     if (cartCheckout.items.length === 0) {
+      enviandoRef.current = false;
       setErroGeral("Sua sacola está vazia — volte e adicione algo antes de finalizar.");
       return;
     }
@@ -331,7 +348,9 @@ export function CheckoutForm({
     // para /checkout/pagamento — chegar aqui só acontece no caminho de erro
     // (mesmo padrão de salvarProdutoAction, ver
     // src/app/admin/(protected)/produtos/actions.ts).
+    // Sucesso = redirect, a página morre; a trava só é solta no caminho de erro.
     if (resultado?.erro) {
+      enviandoRef.current = false;
       setErroGeral(resultado.erro);
       setSuporteFreteHref(resultado.suporteWhatsAppUrl ?? null);
       setErros(resultado.camposComErro ?? {});

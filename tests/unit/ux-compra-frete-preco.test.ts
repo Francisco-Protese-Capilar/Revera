@@ -57,3 +57,27 @@ describe("produto internacional — preço antes de escolher a cor (15/10/2026)"
     expect(produtoIntl.indexOf('data-testid="preco-internacional"')).toBeLessThan(produtoIntl.indexOf("{copy.choose}"));
   });
 });
+
+describe("checkout nacional — cotação concorrente e envio duplo (Codex r3, 15/10/2026)", () => {
+  it("só a cotação mais recente grava frete, aviso e estado de pendência", () => {
+    expect(checkout).toContain("const minhaCotacao = ++cotacaoEmVoo.current");
+    expect(checkout).toContain("const souAtual = () => cotacaoEmVoo.current === minhaCotacao");
+    expect(checkout).toContain("if (!souAtual()) return;");
+    expect(checkout).toContain("if (souAtual()) setCotandoFrete(false);");
+  });
+
+  it("limpa o frete do CEP anterior ao iniciar uma cotação nova", () => {
+    const inicio = checkout.indexOf("const minhaCotacao = ++cotacaoEmVoo.current");
+    const limpa = checkout.indexOf("setFrete(null);", inicio);
+    const fetchPos = checkout.indexOf('fetch("/api/frete"', inicio);
+    expect(limpa).toBeGreaterThan(inicio);
+    expect(limpa).toBeLessThan(fetchPos);
+  });
+
+  it("trava síncrona impede duas Server Actions no mesmo envio", () => {
+    expect(checkout).toContain("if (enviandoRef.current) return;");
+    expect(checkout).toContain("enviandoRef.current = true;");
+    expect(checkout.split("enviandoRef.current = false;").length).toBe(3);
+  });
+});
+
