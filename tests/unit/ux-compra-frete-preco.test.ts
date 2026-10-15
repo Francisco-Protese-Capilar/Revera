@@ -79,6 +79,12 @@ describe("checkout nacional — cotação concorrente e envio duplo (Codex r3, 1
     expect(checkout).toContain("enviandoRef.current = true;");
     expect(checkout.split("enviandoRef.current = false;").length).toBe(5);
     expect(checkout).toContain('startsWith("NEXT_REDIRECT")');
+    // a montagem do payload (atribuição, localStorage) fica DENTRO do try
+    const tryPos = checkout.indexOf("resultado = await criarPedidoAction(payload)");
+    const payloadPos = checkout.indexOf("const payload: CheckoutInput = {");
+    const tryInicio = checkout.lastIndexOf("try {", tryPos);
+    expect(payloadPos).toBeGreaterThan(tryInicio);
+    expect(payloadPos).toBeLessThan(tryPos);
   });
 
   it("CEP incompleto invalida a cotação em voo e solta o botão", () => {

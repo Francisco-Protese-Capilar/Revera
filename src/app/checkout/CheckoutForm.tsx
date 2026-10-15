@@ -332,21 +332,28 @@ export function CheckoutForm({
       return;
     }
 
-    const complementoLimpo = campos.complement.trim();
-    const payload: CheckoutInput = {
-      ...campos,
-      complement: complementoLimpo === "" ? null : complementoLimpo,
-      paymentPreference: applePayDisponivel ? paymentPreference : "default",
-      // Lido AQUI, no envio, e não na montagem da tela: os cookies do pixel
-      // podem só existir depois que os scripts carregaram, e no submit já
-      // carregaram com folga.
-      atribuicao: lerAtribuicao(),
-      trackingConsent: window.localStorage.getItem("revera-cookies-opcionais-v1") === "aceito",
-    };
-
     setEnviando(true);
     let resultado: Awaited<ReturnType<typeof criarPedidoAction>>;
     try {
+      const complementoLimpo = campos.complement.trim();
+      let trackingConsent = false;
+      try {
+        // localStorage pode estar bloqueado (modo privado, política do
+        // navegador); sem consentimento gravado, segue sem rastreio.
+        trackingConsent = window.localStorage.getItem("revera-cookies-opcionais-v1") === "aceito";
+      } catch {
+        trackingConsent = false;
+      }
+      const payload: CheckoutInput = {
+        ...campos,
+        complement: complementoLimpo === "" ? null : complementoLimpo,
+        paymentPreference: applePayDisponivel ? paymentPreference : "default",
+        // Lido AQUI, no envio, e não na montagem da tela: os cookies do pixel
+        // podem só existir depois que os scripts carregaram, e no submit já
+        // carregaram com folga.
+        atribuicao: lerAtribuicao(),
+        trackingConsent,
+      };
       resultado = await criarPedidoAction(payload);
     } catch (e) {
       // O redirect() da Server Action chega ao cliente como exceção interna
