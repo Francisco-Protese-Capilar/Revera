@@ -13,6 +13,12 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({
   from: () => ({ select: () => ({ order: async () => ({ data: [] }) }) }),
 }) }));
 vi.mock("@/lib/conteudo/fotos-do-site", () => ({ urlDaFotoDoSite: async (path: string) => path }));
+// A vitrine resolve o país de entrega por cookies/cabeçalhos (15/10/2026);
+// fora de uma requisição, sem nada disso, cai no Brasil.
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: () => undefined }),
+  headers: async () => ({ get: () => null }),
+}));
 beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => vi.unstubAllGlobals());
 const logo = "/media/marca/logo-revera.png";

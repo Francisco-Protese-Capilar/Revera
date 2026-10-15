@@ -44,9 +44,14 @@ Consequências visíveis:
 - `localeFromCountry` cobre os nove destinos do seletor (BR, US, ES, FR, DE,
   PT, GB, CA, AU) e continua recusando os demais; um teste prende o mapa à
   tabela de países.
-- A vitrine localizada precifica pelo destino atendido (GB → GBP, CA → CAD,
-  AU → AUD); sem destino atendido, o mercado padrão do idioma continua. Quem
-  lê em outra língua e compra para o Brasil vê BRL e frete nacional.
+- A vitrine (localizada e em português) precifica pelo mesmo destino do
+  checkout (GB → GBP, CA → CAD, AU → AUD, PT → EUR); `?pais=` na URL de
+  produto ou catálogo vale como escolha. Destino conhecido mas fechado em
+  CHECKOUT_PAISES aparece sem preço e sem "adicionar", com convite para
+  escolher o país — nunca a moeda de outro mercado. Quem lê em outra língua
+  e compra para o Brasil vê BRL e frete nacional; quem lê em português e
+  compra para fora vê a página de produto internacional, e a sacola nacional
+  encaminha ao checkout.
 - `experience_context.locale` do PayPal recebe `fr-FR`, `de-DE` e as variantes
   regionais válidas (en-GB, en-AU, fr-CA, pt-PT). Stripe já cobria.
 - Telas de pagamento indisponível, erros do servidor internacional e a página
@@ -58,8 +63,8 @@ Consequências visíveis:
 - Preço base nacional, escada 650/620/600, política internacional (BRL × PTAX
   com `variant_prices` como elegibilidade), CHECKOUT_PAISES, provedores.
 - Reservas, idempotência e bloqueio de nova cobrança no pagamento.
-- A vitrine SEM prefixo (`/`, `/produtos`) continua nacional em BRL, inclusive
-  para visitante de Portugal: mudar isso é decisão comercial pendente.
+- A home em português (`/`) não mostra preço por destino; catálogo e produto
+  mostram.
 - O formulário nacional (CEP/UF/CPF) continua em português; só a casca da
   página de checkout é traduzida quando o Brasil é lido em outra língua.
 - E-mails e notificações continuam na língua do país de entrega: a preferência

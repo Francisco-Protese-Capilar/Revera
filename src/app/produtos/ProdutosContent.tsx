@@ -7,7 +7,7 @@ import { urlDaFotoDoSite } from "@/lib/conteudo/fotos-do-site";
 import { apresentacaoDoProduto, prioridadeCatalogoProduto } from "@/lib/catalog/apresentacao";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { CatalogoGuiado } from "./CatalogoGuiado";
-import { type SiteLocale } from "@/lib/i18n/site";
+import { localizePath, type SiteLocale } from "@/lib/i18n/site";
 import { converterCentavosBrl, obterCotacaoPtax } from "@/lib/internacional/cambio-ptax";
 import { formatarDinheiroParaComprador, type Moeda } from "@/lib/internacional/moeda";
 import { mercadoDaVitrine } from "@/lib/internacional/destino-server";
@@ -315,7 +315,7 @@ export function hrefAjudaCorCatalogo(locale: SiteLocale): string | null {
  * preço ou sem estoque NÃO aparece aqui, porque um card que leva a uma página
  * onde não dá para comprar é pior que card nenhum.
  */
-export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale } = {}) {
+export async function ProdutosContent({ locale = "pt", paisExplicito = null }: { locale?: SiteLocale; paisExplicito?: string | null } = {}) {
   const copy = CATALOGO_COPY[locale];
   const supabase = await createClient();
   const fallbackProduto = await urlDaFotoDoSite("/media/hero/produto-close-1.jpeg");
@@ -323,7 +323,7 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
   // (15/10/2026): inglês não significa dólar — GB lê em inglês e paga em
   // libra. `nacional` (Brasil) mantém o preço BRL de sempre, inclusive para
   // quem escolheu ler em outra língua.
-  const { regra: regraDoMercado, nacional, aberto } = await mercadoDaVitrine(locale);
+  const { iso: isoDoMercado, regra: regraDoMercado, nacional, aberto } = await mercadoDaVitrine(locale, paisExplicito);
   const mercado = { moeda: regraDoMercado.moedaPadrao as Moeda, locale: regraDoMercado.locale };
 
   const { data: produtos } = await supabase
@@ -497,9 +497,9 @@ export async function ProdutosContent({ locale = "pt" }: { locale?: SiteLocale }
           data-testid="mercado-fechado"
           className="flex flex-col gap-3 rounded-2xl border border-gold/45 bg-gold/10 p-5 sm:flex-row sm:items-center sm:justify-between"
         >
-          <p className="text-sm leading-6 text-ink/80">{copy.mercadoFechado(nomeDoPais(regraDoMercado.iso, locale))}</p>
+          <p className="text-sm leading-6 text-ink/80">{copy.mercadoFechado(nomeDoPais(isoDoMercado, locale))}</p>
           <a
-            href={`/${locale}/checkout`}
+            href={localizePath("/checkout", locale)}
             className="min-h-toque shrink-0 rounded-xl border border-ink/25 bg-paper px-5 py-3 text-center text-sm font-semibold text-ink"
           >
             {copy.mercadoFechadoLink}

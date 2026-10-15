@@ -252,6 +252,16 @@ describe("A1 — middleware: país explícito e cookie da jornada", () => {
     expect(res.headers.get(`x-middleware-request-${LOCALE_HEADER}`)).toBe("de");
   });
 
+  it("?pais= numa página de produto vale como escolha: grava o cookie e segue o idioma do destino", () => {
+    const semPrefixo = middleware(req("/produtos/micropele-008?pais=GB", { headers: { "x-vercel-ip-country": "BR", "sec-fetch-dest": "document" } }));
+    expect(semPrefixo.headers.get("location")).toBe(`${ORIGEM}/en/produtos/micropele-008?pais=GB`);
+    const localizado = middleware(req("/en/produtos/micropele-008?pais=GB", { headers: { "x-vercel-ip-country": "BR", "sec-fetch-dest": "document" } }));
+    expect(localizado.headers.get("location")).toBeNull();
+    expect(cookieGravado(localizado, PAIS_ESCOLHIDO_COOKIE)).toContain("=GB");
+    const invalido = middleware(req("/en/produtos/micropele-008?pais=ZZ", { headers: { "sec-fetch-dest": "document" } }));
+    expect(cookieGravado(invalido, PAIS_ESCOLHIDO_COOKIE)).toBeNull();
+  });
+
   it("brasileiro sem escolha nenhuma continua em português, no checkout nacional", () => {
     const res = middleware(req("/checkout", { headers: { "x-vercel-ip-country": "BR", "sec-fetch-dest": "document" } }));
     expect(res.headers.get("location")).toBeNull();
@@ -297,7 +307,14 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("@/app/checkout/CheckoutForm", () => ({ CheckoutForm: () => null }));
 vi.mock("@/components/cart/CartProvider", () => ({ useCart: () => ({ adicionarItem: vi.fn(), pendente: false }) }));
-vi.mock("@/lib/conteudo/fotos-do-site", () => ({ urlDaFotoDoSite: async (path: string) => path }));
+vi.mock("@/lib/conteudo/fotos-do-site", () => ({
+  urlDaFotoDoSite: async (path: string) => path,
+  urlsDasFotosDoSite: async (paths: string[]) => new Map(paths.map((p) => [p, p])),
+}));
+vi.mock("next/navigation", () => ({
+  notFound: () => { throw new Error("notFound"); },
+  redirect: (destino: string) => { throw new Error(`redirect:${destino}`); },
+}));
 vi.mock("@/app/checkout/CheckoutInternacionalForm", () => ({ CheckoutInternacionalForm: () => null }));
 vi.mock("@/lib/cart/store", () => ({
   lerCarrinhoCompleto: vi.fn(async () => ({
@@ -529,7 +546,7 @@ describe("A2 — mercadoDaVitrine e página de produto localizada", () => {
     const { ProdutoInternacional } = await import("@/app/[locale]/produtos/[slug]/ProdutoInternacional");
     const { obterCotacaoPtax } = await import("@/lib/internacional/cambio-ptax");
     (obterCotacaoPtax as unknown as ReturnType<typeof vi.fn>).mockClear();
-    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }) });
+    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }), searchParams: Promise.resolve({}) });
     const el = encontrar(arvore, (x) => x.type === ProdutoInternacional)!;
     expect(el.props.mercadoFechadoPara).toBe("United Kingdom");
     expect((el.props.variants as Array<{ priceCents: number }>).every((v) => v.priceCents === 0)).toBe(true);
@@ -559,12 +576,56 @@ describe("A2 — mercadoDaVitrine e página de produto localizada", () => {
     expect(JSON.stringify(aviso!.props.children)).toContain("Sales to United Kingdom are not available yet");
   });
 
-  it("português sem prefixo é sempre a vitrine nacional, mesmo com destino escolhido", async () => {
+  it("português sem prefixo segue o destino escolhido, como o checkout: GB em libra, Brasil só quando é Brasil", async () => {
     const { mercadoDaVitrine } = await import("@/lib/internacional/destino-server");
     estado.cookies = { [PAIS_ESCOLHIDO_COOKIE]: "GB" };
-    const mercado = await mercadoDaVitrine("pt");
-    expect(mercado.nacional).toBe(true);
-    expect(mercado.regra.moedaPadrao).toBe("BRL");
+    expect(await mercadoDaVitrine("pt")).toMatchObject({ nacional: false, aberto: true, regra: { iso: "GB", moedaPadrao: "GBP" } });
+    estado.cookies = {};
+    estado.headers = { [GEO_COUNTRY_HEADER]: "PT" };
+    expect(await mercadoDaVitrine("pt")).toMatchObject({ nacional: false, aberto: true, regra: { iso: "PT", moedaPadrao: "EUR" } });
+    estado.headers = { [GEO_COUNTRY_HEADER]: "BR" };
+    expect(await mercadoDaVitrine("pt")).toMatchObject({ nacional: true, regra: { moedaPadrao: "BRL" } });
+    estado.headers = {};
+    expect(await mercadoDaVitrine("pt")).toMatchObject({ nacional: true, regra: { moedaPadrao: "BRL" } });
+  });
+
+  it("?pais= na URL da vitrine vence cookie e geolocalização; inválido fica fechado", async () => {
+    const { mercadoDaVitrine } = await import("@/lib/internacional/destino-server");
+    estado.cookies = { [PAIS_ESCOLHIDO_COOKIE]: "US" };
+    estado.headers = { [GEO_COUNTRY_HEADER]: "US" };
+    expect(await mercadoDaVitrine("en", "gb")).toMatchObject({ aberto: true, nacional: false, regra: { iso: "GB", moedaPadrao: "GBP" } });
+    expect(await mercadoDaVitrine("en", "ZZ")).toMatchObject({ aberto: false, nacional: false, iso: "ZZ" });
+    expect(await mercadoDaVitrine("pt", "br")).toMatchObject({ aberto: true, nacional: true, regra: { iso: "BR" } });
+  });
+
+  // A rota nacional importa a página inteira (ProdutoInterativo, textos,
+  // fotos); o primeiro import frio passa de 5 s em máquina lenta.
+  it("página de produto em português com destino GB usa a precificação internacional, em português", { timeout: 30_000 }, async () => {
+    estado.cookies = { [PAIS_ESCOLHIDO_COOKIE]: "GB" };
+    const { default: ProdutoNacional } = await import("@/app/produtos/[slug]/page");
+    const { ProdutoInternacional } = await import("@/app/[locale]/produtos/[slug]/ProdutoInternacional");
+    const { converterCentavosBrl } = await import("@/lib/internacional/cambio-ptax");
+    const arvore = await ProdutoNacional({ params: Promise.resolve({ slug: "micropele-008" }), searchParams: Promise.resolve({}) });
+    const el = encontrar(arvore, (x) => x.type === ProdutoInternacional)!;
+    expect(el.props.locale).toBe("pt");
+    expect(el.props.currency).toBe("GBP");
+    expect((el.props.variants as Array<{ priceCents: number }>)[0]!.priceCents).toBe(converterCentavosBrl(65000, 5));
+  });
+
+  it("sacola nacional com destino fora do Brasil vai para o checkout, como a sacola localizada", async () => {
+    estado.cookies = { [PAIS_ESCOLHIDO_COOKIE]: "PT" };
+    const { default: CarrinhoPage } = await import("@/app/carrinho/page");
+    await expect(CarrinhoPage()).rejects.toThrow("redirect:/checkout");
+    estado.cookies = {};
+    await expect(CarrinhoPage()).resolves.toBeTruthy();
+  });
+
+  it("a sacola no navegador reconhece o destino pelos cookies, sem autoridade sobre preço", async () => {
+    const { destinoDoNavegador } = await import("@/lib/internacional/destino");
+    expect(destinoDoNavegador("revera_pais_entrega=GB; revera_country=BR")).toBe("GB");
+    expect(destinoDoNavegador("revera_country=PT")).toBe("PT");
+    expect(destinoDoNavegador("revera_pais_entrega=../; revera_country=ZZ")).toBeNull();
+    expect(destinoDoNavegador("")).toBeNull();
   });
 
   it("produto em /en com destino GB mostra GBP com a MESMA conversão do checkout, só para variantes elegíveis", async () => {
@@ -572,7 +633,7 @@ describe("A2 — mercadoDaVitrine e página de produto localizada", () => {
     const { default: ProdutoLocalizado } = await import("@/app/[locale]/produtos/[slug]/page");
     const { ProdutoInternacional } = await import("@/app/[locale]/produtos/[slug]/ProdutoInternacional");
     const { converterCentavosBrl } = await import("@/lib/internacional/cambio-ptax");
-    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }) });
+    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }), searchParams: Promise.resolve({}) });
     const el = encontrar(arvore, (x) => x.type === ProdutoInternacional)!;
     expect(el.props.currency).toBe("GBP");
     expect(el.props.moneyLocale).toBe("en-GB");
@@ -587,7 +648,7 @@ describe("A2 — mercadoDaVitrine e página de produto localizada", () => {
     estado.headers = { [GEO_COUNTRY_HEADER]: "BR" };
     const { default: ProdutoLocalizado } = await import("@/app/[locale]/produtos/[slug]/page");
     const { ProdutoInternacional } = await import("@/app/[locale]/produtos/[slug]/ProdutoInternacional");
-    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }) });
+    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }), searchParams: Promise.resolve({}) });
     const el = encontrar(arvore, (x) => x.type === ProdutoInternacional)!;
     expect(el.props.currency).toBe("BRL");
     expect(el.props.moneyLocale).toBe("pt-BR");
@@ -606,7 +667,7 @@ describe("A2 — mercadoDaVitrine e página de produto localizada", () => {
     ];
     const { default: ProdutoLocalizado } = await import("@/app/[locale]/produtos/[slug]/page");
     const { ProdutoInternacional } = await import("@/app/[locale]/produtos/[slug]/ProdutoInternacional");
-    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }) });
+    const arvore = await ProdutoLocalizado({ params: Promise.resolve({ locale: "en", slug: "micropele-008" }), searchParams: Promise.resolve({}) });
     const el = encontrar(arvore, (x) => x.type === ProdutoInternacional)!;
     expect((el.props.variants as Array<{ id: string }>).map((v) => v.id)).toEqual(["ok"]);
   });

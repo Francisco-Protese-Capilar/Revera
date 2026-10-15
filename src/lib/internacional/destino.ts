@@ -28,6 +28,7 @@
 import { regraDoPais, idiomaDoPais } from "./paises";
 import {
   DEFAULT_SITE_LOCALE,
+  GEO_COUNTRY_COOKIE,
   isSiteLocale,
   localeFromCountry,
   type SiteLocale,
@@ -166,16 +167,41 @@ export function resolverIdiomaDaJornada(entrada: {
  */
 export function destinoDaVitrine(entrada: {
   locale: SiteLocale;
+  explicito?: string | null;
   escolhido?: string | null;
   detectado?: string | null;
   atendidos: readonly string[];
 }): { iso: string; aberto: boolean } {
   const atendidos = new Set(entrada.atendidos.map((p) => p.toUpperCase()));
+  // `?pais=` na URL da vitrine vale como no checkout (Codex, 15/10/2026):
+  // conhecido vence cookie e geolocalização; presente mas inválido fica
+  // fechado, sem cair em outro mercado.
+  const explicito = paisConhecido(entrada.explicito);
+  if (explicito) return { iso: explicito, aberto: atendidos.has(explicito) };
+  if (typeof entrada.explicito === "string" && entrada.explicito.trim() !== "") {
+    return { iso: codigoParaExibir(entrada.explicito), aberto: false };
+  }
   const iso =
     paisConhecido(entrada.escolhido) ??
     paisConhecido(entrada.detectado) ??
     mercadoPadraoDoIdioma(entrada.locale);
   return { iso, aberto: atendidos.has(iso) };
+}
+
+/**
+ * Destino visível ao NAVEGADOR (cookies não-httpOnly gravados pelo
+ * middleware): país escolhido na jornada, senão o detectado na borda. Usado
+ * pela sacola para não abrir o drawer em real quando a entrega é fora do
+ * Brasil. Não tem autoridade: o servidor resolve de novo no checkout.
+ */
+export function destinoDoNavegador(cookieHeader: string | null | undefined): string | null {
+  if (!cookieHeader) return null;
+  const valores = new Map<string, string>();
+  for (const par of cookieHeader.split(";")) {
+    const [nome, ...resto] = par.split("=");
+    if (nome && resto.length > 0) valores.set(nome.trim(), decodeURIComponent(resto.join("=").trim()));
+  }
+  return paisConhecido(valores.get(PAIS_ESCOLHIDO_COOKIE)) ?? paisConhecido(valores.get(GEO_COUNTRY_COOKIE));
 }
 
 /** URL da aba de país do checkout, preservando o prefixo de idioma da rota. */

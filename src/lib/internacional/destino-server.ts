@@ -5,6 +5,8 @@ import { paisesDoCheckout, regraDoPais, type RegraDePais } from "./paises";
 import { PAIS_ESCOLHIDO_COOKIE, destinoDaVitrine } from "./destino";
 
 export interface MercadoDaVitrine {
+  /** ISO resolvido — ou o código inválido vindo de `?pais=`, só para exibir. */
+  iso: string;
   /** Regra do país de entrega resolvido (moeda, locale de número/data). */
   regra: RegraDePais;
   /** Brasil: preço nacional em BRL, sem PTAX nem variant_prices. */
@@ -28,19 +30,25 @@ export interface MercadoDaVitrine {
  * `aberto: false`: a vitrine não precifica em moeda de outro mercado, mostra
  * o aviso e convida a escolher o país (Codex, 15/10/2026).
  */
-export async function mercadoDaVitrine(locale: SiteLocale): Promise<MercadoDaVitrine> {
-  const destino =
-    locale === "pt"
-      ? { iso: "BR", aberto: true }
-      : destinoDaVitrine({
-          locale,
-          escolhido: (await cookies()).get(PAIS_ESCOLHIDO_COOKIE)?.value,
-          detectado:
-            (await headers()).get(GEO_COUNTRY_HEADER) ??
-            (await headers()).get("x-vercel-ip-country") ??
-            (await cookies()).get(GEO_COUNTRY_COOKIE)?.value,
-          atendidos: paisesDoCheckout(),
-        });
-  const regra = regraDoPais(destino.iso) ?? regraDoPais("BR")!;
-  return { regra, nacional: regra.moedaPadrao === "BRL", aberto: destino.aberto };
+export async function mercadoDaVitrine(locale: SiteLocale, paisExplicito?: string | null): Promise<MercadoDaVitrine> {
+  // Português sem prefixo também segue o destino (Codex, 15/10/2026): quem
+  // escolheu entrega no Reino Unido e voltou ao português vê libra na
+  // vitrine, como verá no checkout. Brasil só quando a resolução dá Brasil.
+  const destino = destinoDaVitrine({
+    locale,
+    explicito: paisExplicito,
+    escolhido: (await cookies()).get(PAIS_ESCOLHIDO_COOKIE)?.value,
+    detectado:
+      (await headers()).get(GEO_COUNTRY_HEADER) ??
+      (await headers()).get("x-vercel-ip-country") ??
+      (await cookies()).get(GEO_COUNTRY_COOKIE)?.value,
+    atendidos: paisesDoCheckout(),
+  });
+  const regra = regraDoPais(destino.iso);
+  return {
+    iso: destino.iso,
+    regra: regra ?? regraDoPais("BR")!,
+    nacional: Boolean(regra) && regra!.moedaPadrao === "BRL",
+    aberto: destino.aberto,
+  };
 }

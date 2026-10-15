@@ -58,11 +58,13 @@ function gravarPaisEscolhido(response: NextResponse, destino: DestinoResolvido, 
 /**
  * O destino que a PÁGINA vai resolver, calculado aqui com as mesmas funções,
  * para o `<html lang>` do layout (que lê LOCALE_HEADER) concordar com o
- * `<main lang>` do checkout. `?pais=` só conta nas rotas de checkout.
+ * `<main lang>` do checkout.
  */
 function destinoDaRequisicao(request: NextRequest, localeDaRota: SiteLocale | null): DestinoResolvido {
-  const strippedPath = stripLocaleFromPath(request.nextUrl.pathname);
-  const explicito = strippedPath === "/checkout" ? request.nextUrl.searchParams.get("pais") : null;
+  // `?pais=` vale em qualquer página pública (checkout, produto, catálogo —
+  // um anúncio pode apontar para `/en/produtos/x?pais=GB`): o país
+  // conhecido vira a escolha da jornada.
+  const explicito = request.nextUrl.searchParams.get("pais");
   return resolverPaisDeEntrega({
     explicito,
     escolhido: request.cookies.get(PAIS_ESCOLHIDO_COOKIE)?.value,
