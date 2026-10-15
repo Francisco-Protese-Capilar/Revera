@@ -8,7 +8,6 @@ import { useCart } from "@/components/cart/CartProvider";
 import { Button } from "@/components/ui/Button";
 import { CheckoutSummary } from "@/components/ui/CheckoutSummary";
 import { FormField } from "@/components/ui/FormField";
-import { Toast } from "@/components/ui/Toast";
 import { formatarCPF } from "@/lib/format/cpf";
 import { criarPedidoAction } from "./actions";
 import type { CheckoutInput } from "./schema";
@@ -79,6 +78,19 @@ export function CheckoutForm({
   const [campos, setCampos] = useState<FormState>(ESTADO_INICIAL);
   const [erros, setErros] = useState<Record<string, string>>({});
   const [erroGeral, setErroGeral] = useState<string | null>(null);
+  // O "Finalizar pedido" fica no fim da página. Um erro mostrado só no topo
+  // (Toast) não é visto por quem acabou de clicar lá embaixo: a tela parece
+  // ter ignorado o clique e a pessoa desiste (visto em 15/10/2026 com a
+  // falha de frete). O erro agora também aparece junto do botão e a página
+  // rola até ele.
+  const erroJuntoDoBotaoRef = useRef<HTMLDivElement | null>(null);
+  // Número da cotação em voo. Uma resposta antiga (CEP trocado no meio) não
+  // pode gravar frete nem liberar o botão por cima da cotação atual
+  // (Codex, 15/10/2026).
+  const cotacaoEmVoo = useRef(0);
+  // Trava síncrona do envio: dois submits no mesmo tick (Enter + clique)
+  // não podem disparar duas Server Actions.
+  const enviandoRef = useRef(false);
   const [suporteFreteHref, setSuporteFreteHref] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
@@ -229,8 +241,13 @@ export function CheckoutForm({
     if (ultimoCepCotado.current === chaveCotacao) return;
     ultimoCepCotado.current = chaveCotacao;
 
+    const minhaCotacao = ++cotacaoEmVoo.current;
+    const souAtual = () => cotacaoEmVoo.current === minhaCotacao;
     setCotandoFrete(true);
     setAvisoFrete(null);
+    // Frete do CEP anterior some já: o total não pode mostrar valor velho
+    // enquanto a cotação nova corre.
+    setFrete(null);
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), FRETE_TIMEOUT_MS);
     try {
@@ -247,6 +264,7 @@ export function CheckoutForm({
         etaDays?: number;
       };
 
+      if (!souAtual()) return;
       if (!r.ok || !dados.disponivel || typeof dados.priceCents !== "number") {
         ultimoCepCotado.current = "";
         setFrete(null);
@@ -264,6 +282,7 @@ export function CheckoutForm({
         etaDays: dados.etaDays ?? 0,
       });
     } catch {
+      if (!souAtual()) return;
       ultimoCepCotado.current = "";
       setFrete(null);
       setAvisoFrete(
@@ -273,13 +292,17 @@ export function CheckoutForm({
       );
     } finally {
       window.clearTimeout(timeout);
-      setCotandoFrete(false);
+      if (souAtual()) setCotandoFrete(false);
     }
   }
 
   useEffect(() => {
     const digitos = campos.cep.replace(/\D/g, "");
     if (digitos.length !== 8) {
+      // CEP apagado ou incompleto no meio de uma cotação: a resposta em voo
+      // deixa de valer e o botão não pode ficar preso em "Calculando frete…".
+      cotacaoEmVoo.current += 1;
+      setCotandoFrete(false);
       setFrete(null);
       setAvisoFrete(null);
       ultimoCepCotado.current = "";
@@ -298,60 +321,80 @@ export function CheckoutForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setErroGeral(null);
     setSuporteFreteHref(null);
 
     if (cartCheckout.items.length === 0) {
+      enviandoRef.current = false;
       setErroGeral("Sua sacola está vazia — volte e adicione algo antes de finalizar.");
       return;
     }
 
-    const complementoLimpo = campos.complement.trim();
-    const payload: CheckoutInput = {
-      ...campos,
-      complement: complementoLimpo === "" ? null : complementoLimpo,
-      paymentPreference: applePayDisponivel ? paymentPreference : "default",
-      // Lido AQUI, no envio, e não na montagem da tela: os cookies do pixel
-      // podem só existir depois que os scripts carregaram, e no submit já
-      // carregaram com folga.
-      atribuicao: lerAtribuicao(),
-      trackingConsent: window.localStorage.getItem("revera-cookies-opcionais-v1") === "aceito",
-    };
-
     setEnviando(true);
-    const resultado = await criarPedidoAction(payload);
+    let resultado: Awaited<ReturnType<typeof criarPedidoAction>>;
+    try {
+      const complementoLimpo = campos.complement.trim();
+      let trackingConsent = false;
+      try {
+        // localStorage pode estar bloqueado (modo privado, política do
+        // navegador); sem consentimento gravado, segue sem rastreio.
+        trackingConsent = window.localStorage.getItem("revera-cookies-opcionais-v1") === "aceito";
+      } catch {
+        trackingConsent = false;
+      }
+      const payload: CheckoutInput = {
+        ...campos,
+        complement: complementoLimpo === "" ? null : complementoLimpo,
+        paymentPreference: applePayDisponivel ? paymentPreference : "default",
+        // Lido AQUI, no envio, e não na montagem da tela: os cookies do pixel
+        // podem só existir depois que os scripts carregaram, e no submit já
+        // carregaram com folga.
+        atribuicao: lerAtribuicao(),
+        trackingConsent,
+      };
+      resultado = await criarPedidoAction(payload);
+    } catch {
+      // Qualquer exceção (rede, transporte, erro síncrono ao montar o
+      // payload) solta a trava e vira erro visível: o botão nunca fica preso.
+      // O redirect() da Server Action não passa por aqui — o Next navega
+      // pelo router do cliente; se um dia passar, soltar a trava durante a
+      // navegação é inofensivo (a página está saindo).
+      setEnviando(false);
+      enviandoRef.current = false;
+      setErroGeral("Não conseguimos enviar o pedido agora. Confira sua conexão e tente de novo; nada foi cobrado.");
+      return;
+    }
     setEnviando(false);
 
     // Sucesso não devolve nada: a própria Server Action já fez redirect()
     // para /checkout/pagamento — chegar aqui só acontece no caminho de erro
     // (mesmo padrão de salvarProdutoAction, ver
     // src/app/admin/(protected)/produtos/actions.ts).
+    // Sucesso = redirect, a página morre; a trava só é solta no caminho de erro.
     if (resultado?.erro) {
+      enviandoRef.current = false;
       setErroGeral(resultado.erro);
       setSuporteFreteHref(resultado.suporteWhatsAppUrl ?? null);
       setErros(resultado.camposComErro ?? {});
+    } else {
+      // Sem erro e sem redirect (não deveria acontecer): não deixar o botão
+      // preso para sempre.
+      enviandoRef.current = false;
     }
   }
 
+  useEffect(() => {
+    if (!erroGeral) return;
+    erroJuntoDoBotaoRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [erroGeral]);
+
   return (
     <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-8 pb-16" noValidate>
-      {erroGeral ? <Toast message={erroGeral} variant="error" onClose={() => setErroGeral(null)} /> : null}
-      {suporteFreteHref ? (
-        <div className="rounded-xl border border-gold/45 bg-gold/10 p-4 text-sm text-ink shadow-sm">
-          <p className="font-semibold">A equipe pode confirmar esse frete manualmente.</p>
-          <p className="mt-1 text-ink/70">
-            O link ja leva o CEP e os itens da sacola para agilizar o atendimento.
-          </p>
-          <a
-            href={suporteFreteHref}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-flex min-h-toque items-center justify-center rounded-xl bg-gold-metal px-4 py-3 font-semibold text-ink shadow-[0_8px_20px_-10px_rgb(var(--gold-rgb)_/_0.9)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-glow-gold"
-          >
-            Falar no WhatsApp
-          </a>
-        </div>
-      ) : null}
+      {/* O erro geral é anunciado uma vez só, no bloco role="alert" junto do
+          botão (abaixo), para onde a página rola. Um Toast aqui em cima
+          repetiria o anúncio para leitores de tela. */}
 
       <section className="flex flex-col gap-4">
         <h2 className="font-display text-xl text-ink">Seus dados</h2>
@@ -653,6 +696,32 @@ export function CheckoutForm({
         <p className="-mt-2 text-sm text-ink/70" role="status">
           {avisoFrete}
         </p>
+      ) : null}
+
+      {erroGeral ? (
+        <div
+          ref={erroJuntoDoBotaoRef}
+          role="alert"
+          className="rounded-xl border border-red-700/40 bg-red-700/5 p-4 text-sm text-ink shadow-sm"
+        >
+          <p className="font-semibold text-red-800">{erroGeral}</p>
+          {suporteFreteHref ? (
+            <>
+              <p className="mt-2 text-ink/70">
+                A equipe pode confirmar esse frete manualmente. O link ja leva o CEP e os
+                itens da sacola para agilizar o atendimento.
+              </p>
+              <a
+                href={suporteFreteHref}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex min-h-toque items-center justify-center rounded-xl bg-gold-metal px-4 py-3 font-semibold text-ink shadow-[0_8px_20px_-10px_rgb(var(--gold-rgb)_/_0.9)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-glow-gold"
+              >
+                Falar no WhatsApp
+              </a>
+            </>
+          ) : null}
+        </div>
       ) : null}
 
       {/* A cotação no navegador é só informativa. O frete real é recalculado

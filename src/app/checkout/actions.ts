@@ -118,7 +118,7 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
         camposComErro[campo] = issue.message;
       }
     }
-    return { erro: "Confira os dados marcados abaixo.", camposComErro };
+    return { erro: "Confira os dados marcados acima.", camposComErro };
   }
   const dados = parsed.data;
 
