@@ -145,6 +145,7 @@ export function ColorSelector({
                     alt={color.name}
                     fill
                     sizes="88px"
+                    unoptimized
                     className="object-cover"
                   />
                 ) : !color.hexPreview ? (
