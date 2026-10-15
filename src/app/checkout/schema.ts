@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { cpfValido, limparCPF } from "@/lib/format/cpf";
+import type { Idioma } from "@/lib/internacional/idioma";
+import { textosNacional } from "./textos-nacional";
 
 /**
  * Um texto de rastreamento, ou nada.
@@ -21,8 +23,18 @@ const textoCurto = z.string().max(500).nullable().optional().catch(null);
 // `refine` receberia só números e não pegaria erro nenhum de formato
 // (não que isso mude o resultado aqui, mas a ordem importa se algum dia a
 // regra de formato ficar mais específica).
-export const checkoutSchema = z.object({
+/**
+ * Fábrica por idioma (item 1 das pendências de 15/10/2026): as mensagens de
+ * erro voltam na língua em que a tela foi lida. As REGRAS são as mesmas em
+ * qualquer idioma — só o texto muda. `checkoutSchema` (português) continua
+ * exportado para tipos e para quem já importava.
+ */
+export function checkoutSchemaDoIdioma(idioma: Idioma) {
+  const t = textosNacional(idioma);
+  return z.object({
   trackingConsent: z.boolean().optional().default(false),
+  /** Idioma da tela; só escolhe a língua das mensagens, nunca o país. */
+  idioma: z.enum(["pt", "en", "es", "fr", "de"]).optional(),
   paymentPreference: z.enum(["default", "apple_pay"]).optional().default("default"),
   /**
    * País de entrega. Default 'BR' — e hoje esse é o único valor que o
@@ -44,12 +56,12 @@ export const checkoutSchema = z.object({
     .trim()
     .default("BR")
     .transform((v) => v.toUpperCase())
-    .refine((v) => v === "BR", "Ainda entregamos apenas no Brasil."),
-  name: z.string().trim().min(3, "Informe seu nome completo."),
+    .refine((v) => v === "BR", t.soBrasil),
+  name: z.string().trim().min(3, t.erroNome),
   email: z
     .string()
     .trim()
-    .email("E-mail inválido.")
+    .email(t.erroEmail)
     .transform((v) => v.toLowerCase()),
   phone: z
     .string()
@@ -57,27 +69,27 @@ export const checkoutSchema = z.object({
     .refine((v) => {
       const digitos = v.replace(/\D/g, "");
       return digitos.length === 10 || digitos.length === 11;
-    }, "Telefone inválido — use DDD + número.")
+    }, t.erroTelefone)
     .transform((v) => v.replace(/\D/g, "")),
   cpf: z
     .string()
     .trim()
-    .refine((v) => cpfValido(v), "CPF inválido — confira os números digitados.")
+    .refine((v) => cpfValido(v), t.erroCpf)
     .transform((v) => limparCPF(v)),
   cep: z
     .string()
     .trim()
-    .refine((v) => /^\d{5}-?\d{3}$/.test(v), "CEP inválido — use o formato 00000-000.")
+    .refine((v) => /^\d{5}-?\d{3}$/.test(v), t.erroCep)
     .transform((v) => v.replace(/\D/g, "")),
-  street: z.string().trim().min(1, "Informe a rua."),
-  number: z.string().trim().min(1, "Informe o número."),
+  street: z.string().trim().min(1, t.erroRua),
+  number: z.string().trim().min(1, t.erroNumero),
   complement: z.string().trim().nullable(),
-  neighborhood: z.string().trim().min(1, "Informe o bairro."),
-  city: z.string().trim().min(1, "Informe a cidade."),
+  neighborhood: z.string().trim().min(1, t.erroBairro),
+  city: z.string().trim().min(1, t.erroCidade),
   state: z
     .string()
     .trim()
-    .refine((v) => /^[A-Za-z]{2}$/.test(v), "UF precisa ter 2 letras (ex.: SP).")
+    .refine((v) => /^[A-Za-z]{2}$/.test(v), t.erroUf)
     .transform((v) => v.toUpperCase()),
 
   /**
@@ -111,7 +123,20 @@ export const checkoutSchema = z.object({
     .nullable()
     .optional()
     .catch(null),
-});
+  });
+}
+
+const SCHEMAS = new Map<Idioma, ReturnType<typeof checkoutSchemaDoIdioma>>();
+export function schemaNacionalDoIdioma(idioma: Idioma) {
+  let schema = SCHEMAS.get(idioma);
+  if (!schema) {
+    schema = checkoutSchemaDoIdioma(idioma);
+    SCHEMAS.set(idioma, schema);
+  }
+  return schema;
+}
+
+export const checkoutSchema = schemaNacionalDoIdioma("pt");
 
 // Formato que o CLIENTE envia (antes das transformações de zod) — é o que
 // CheckoutForm.tsx monta a partir do estado dos campos.

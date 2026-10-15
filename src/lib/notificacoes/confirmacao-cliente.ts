@@ -6,6 +6,7 @@ import { EMPRESA } from "@/lib/legal/empresa";
 import { textoDesistencia } from "@/lib/legal/desistencia-texto";
 import { formatarDinheiroParaComprador } from "@/lib/internacional/moeda";
 import { idiomaDoPais, localeDoPais } from "@/lib/internacional/paises";
+import { normalizeSiteLocale } from "@/lib/i18n/site";
 import { daLinha, formatarEndereco, type LinhaEndereco } from "@/lib/internacional/endereco";
 import type { Idioma } from "@/lib/internacional/idioma";
 import { enviarEmail, remetente } from "./email-operacional";
@@ -105,12 +106,14 @@ export function montarConfirmacao(dados: {
   shippingCents: number;
   totalCents: number;
   pais: string;
+  /** Idioma gravado no pedido; sem ele, o idioma do país de entrega. */
+  idioma?: Idioma | null;
   nome: string;
   itens: Linha[];
   endereco: string[];
   base: string;
 }): { assunto: string; texto: string; idioma: Idioma } {
-  const idioma = idiomaDoPais(dados.pais);
+  const idioma = dados.idioma ?? idiomaDoPais(dados.pais);
   const t = T[idioma];
   const na = (c: number) => formatarDinheiroParaComprador(c, dados.currency, localeDoPais(dados.pais));
   const primeiroNome = dados.nome.trim().split(/\s+/)[0] || dados.nome;
@@ -182,7 +185,7 @@ async function enviarReservada(supabase: Supa, orderId: string): Promise<boolean
     const { data: pedido } = await supabase
       .from("orders")
       .select(
-        "id, order_number, access_token, currency, subtotal_cents, discount_cents, shipping_cents, total_cents, customer_id, address_id"
+        "id, order_number, access_token, currency, subtotal_cents, discount_cents, shipping_cents, total_cents, customer_id, address_id, locale"
       )
       .eq("id", orderId)
       .maybeSingle();
@@ -212,6 +215,7 @@ async function enviarReservada(supabase: Supa, orderId: string): Promise<boolean
       shippingCents: (pedido.shipping_cents as number) ?? 0,
       totalCents: (pedido.total_cents as number) ?? 0,
       pais: linha?.country ?? "BR",
+      idioma: normalizeSiteLocale(pedido.locale as string | null),
       nome: (cliente?.full_name as string | null) ?? "",
       itens: (itens ?? []) as Linha[],
       endereco: dominio ? formatarEndereco(dominio, idiomaDoPais(linha?.country ?? "BR")) : [],

@@ -1,5 +1,6 @@
 import type { Idioma } from "@/lib/internacional/idioma";
 import { idiomaDoPais } from "@/lib/internacional/paises";
+import { normalizeSiteLocale } from "@/lib/i18n/site";
 
 export interface PedidoRecuperacaoInternacional {
   id: string;
@@ -9,6 +10,8 @@ export interface PedidoRecuperacaoInternacional {
   totalCents: number;
   paymentStatus: string;
   country: string;
+  /** Idioma gravado no pedido (item 2, 15/10/2026); nulo = idioma do país. */
+  locale?: string | null;
   customer: { name: string; email: string | null; phone: string | null };
 }
 
@@ -56,7 +59,7 @@ export function montarPreviasRecuperacaoInternacional(
       const chave = identidade(pedido);
       if (!chave || vistos.has(chave) || identidadesPagas.has(chave)) return [];
       vistos.add(chave);
-      const idioma = idiomaDoPais(pedido.country);
+      const idioma = normalizeSiteLocale(pedido.locale) ?? idiomaDoPais(pedido.country);
       return [{
         ...pedido,
         idioma,

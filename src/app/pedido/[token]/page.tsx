@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
 import { HEADER_HEIGHT_PX } from "@/lib/layout/header";
 import { createAdminClient } from "@/lib/supabase/server";
 import { confirmarPagamento } from "@/lib/payments/confirmar";
@@ -8,7 +7,7 @@ import { PayPalProvider } from "@/lib/payments/paypal-provider";
 import { consumirPurchaseParaNavegador } from "@/lib/tracking/purchase";
 import { formatarDinheiroParaComprador } from "@/lib/internacional/moeda";
 import { idiomaDoPais, localeDoPais } from "@/lib/internacional/paises";
-import { localeManualDosCookies } from "@/lib/i18n/site";
+import { normalizeSiteLocale } from "@/lib/i18n/site";
 import { LANG_HTML, textos } from "@/lib/internacional/idioma";
 import { daLinha, formatarEndereco, type LinhaEndereco } from "@/lib/internacional/endereco";
 import { PurchaseTracker } from "./PurchaseTracker";
@@ -81,7 +80,7 @@ export default async function PedidoPage({
   const { data: pedido } = await supabase
     .from("orders")
     .select(
-      "id, order_number, status, payment_status, subtotal_cents, discount_cents, shipping_cents, total_cents, currency, created_at, address_id"
+      "id, order_number, status, payment_status, subtotal_cents, discount_cents, shipping_cents, total_cents, currency, created_at, address_id, locale"
     )
     .eq("access_token", token)
     .maybeSingle();
@@ -174,15 +173,14 @@ export default async function PedidoPage({
    * documento nos dois lugares, senão "qual tela você está vendo?" vira
    * pergunta de suporte.
    *
-   * Exceção (A4, 15/10/2026): quem ESCOLHEU idioma no seletor lê nessa
-   * língua também aqui, inclusive na volta do gateway — a preferência vive
-   * no cookie e não altera moeda, valores nem país do pedido. A equipe, sem
-   * esse cookie, continua vendo a língua do destino.
+   * Exceção (15/10/2026): a língua em que a pessoa COMPROU fica gravada no
+   * pedido (`orders.locale`) e vale aqui para todo mundo que abrir o link —
+   * comprador e equipe veem o mesmo documento. Pedido antigo, sem locale,
+   * segue o país. Cookie de idioma não entra: uma troca posterior não
+   * altera um pedido que já existe (precedência única, Codex 15/10/2026).
    */
   const paisDoPedido = (endereco?.country as string | undefined) ?? "BR";
-  const cookieStore = await cookies();
-  const idioma =
-    localeManualDosCookies((nome) => cookieStore.get(nome)?.value) ?? idiomaDoPais(paisDoPedido);
+  const idioma = normalizeSiteLocale(pedido.locale as string | null) ?? idiomaDoPais(paisDoPedido);
   const t = textos(idioma);
   /**
    * Todo dinheiro desta página sai na MOEDA DO PEDIDO (bug pego no E2E de

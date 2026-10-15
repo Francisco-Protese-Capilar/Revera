@@ -17,7 +17,8 @@ describe("checkout nacional — frete automatico", () => {
 
   it("nao depende de blur no campo de CEP para calcular frete", () => {
     expect(fonte).not.toContain("onBlur={(e) =>");
-    expect(fonte).toContain("Calcular frete");
+    // Rótulo vive em textos-nacional.ts desde 15/10/2026 (cinco línguas).
+    expect(fonte).toContain("{cotandoFrete ? t.calculando : t.calcularFrete}");
   });
 
   it("evita cotacao repetida e libera nova tentativa quando falha", () => {
@@ -29,6 +30,6 @@ describe("checkout nacional — frete automatico", () => {
   it("mostra WhatsApp quando o frete real falha no servidor", () => {
     expect(fonte).toContain("suporteFreteHref");
     expect(fonte).toContain("resultado.suporteWhatsAppUrl");
-    expect(fonte).toContain("Falar no WhatsApp");
+    expect(fonte).toContain("{t.falarWhatsApp}");
   });
 });

@@ -13,9 +13,7 @@ vi.mock("@/lib/supabase/server", () => ({ createAdminClient: () => fake }));
 vi.mock("@/lib/payments/confirmar", () => ({ confirmarPagamento: confirmar }));
 vi.mock("@/lib/tracking/purchase", () => ({ consumirPurchaseParaNavegador: vi.fn(async () => null) }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("not found"); } }));
-// A página lê a escolha manual de idioma dos cookies (15/10/2026); sem
-// escolha, a língua continua sendo a do país de entrega do pedido.
-vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }));
+
 
 beforeEach(() => {
   vi.stubGlobal("React", React);

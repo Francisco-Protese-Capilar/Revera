@@ -10,8 +10,11 @@ describe("checkout nacional — falha de frete com atendimento", () => {
     expect(actions).toContain('import { linkWhatsApp } from "@/lib/config/whatsapp"');
     expect(actions).toContain("function linkAjudaFrete");
     expect(actions).toContain("suporteWhatsAppUrl: linkAjudaFrete");
-    expect(actions).toContain("Seu pedido ");
-    expect(actions).toContain("não foi cobrado");
+    // Mensagem em textos-nacional.ts (cinco línguas) desde 15/10/2026.
+    expect(actions).toContain("erro: t.freteNaoCalculado");
+    const textos = readFileSync(join(process.cwd(), "src/app/checkout/textos-nacional.ts"), "utf8");
+    expect(textos).toContain("Seu pedido ");
+    expect(textos).toContain("não foi cobrado");
   });
 
   it("nao documenta mais venda com frete zero em producao", () => {
