@@ -1,4 +1,7 @@
 {
+  "regions": [
+    "gru1"
+  ],
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "node scripts/verify-deploy-seguro.mjs && npm run build",
   "crons": [
