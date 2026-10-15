@@ -1,0 +1,211 @@
+/**
+ * País de entrega e idioma da interface são DUAS informações (15/10/2026).
+ *
+ * A auditoria do checkout reproduziu em produção: abrir
+ * `/checkout?pais=GB`, clicar em EN no cabeçalho e o destino virar Estados
+ * Unidos — porque a rota `/en/checkout` tratava o idioma como se fosse o
+ * mercado. Idioma não autoriza mercado, não muda moeda e não troca frete.
+ *
+ * Este módulo é puro (sem `server-only`): roda no middleware, nas páginas e
+ * nos testes com as mesmas funções, para que o `<html lang>` que o layout
+ * escreve e o formulário que a página renderiza nunca discordem.
+ *
+ * Precedência do DESTINO (quem decide moeda, endereço, frete e imposto):
+ *   1. escolha explícita válida na URL (`?pais=XX`);
+ *   2. escolha já mantida na jornada (cookie gravado pelo middleware quando
+ *      a pessoa clicou numa aba de país ou abriu um link com `?pais=`);
+ *   3. país detectado na borda, quando o sistema o conhece — um país
+ *      conhecido mas fechado recebe a tela de indisponibilidade, nunca vira
+ *      Brasil/EUA em silêncio;
+ *   4. mercado padrão do idioma da rota (`/de/checkout` sem nada acima cai
+ *      na Alemanha, como antes) ou Brasil na rota sem prefixo.
+ *
+ * Precedência da TRADUÇÃO (só texto e o idioma pedido ao gateway):
+ *   1. prefixo explícito na URL (`/fr/...`);
+ *   2. preferência manual persistida (cookie gravado por clique no seletor);
+ *   3. idioma padrão do destino resolvido acima.
+ */
+import { regraDoPais, idiomaDoPais } from "./paises";
+import {
+  DEFAULT_SITE_LOCALE,
+  GEO_COUNTRY_COOKIE,
+  isSiteLocale,
+  localeFromCountry,
+  type SiteLocale,
+} from "@/lib/i18n/site";
+
+/**
+ * Cookie do país ESCOLHIDO (não o detectado — esse é `revera_country`).
+ * Vida curta de propósito: o que ele precisa sobreviver é uma jornada de
+ * compra, inclusive a cotação DHL (6 h) e a volta do gateway. Um clique
+ * curioso numa aba de país não pode mandar um brasileiro para o checkout
+ * dos EUA semanas depois.
+ */
+export const PAIS_ESCOLHIDO_COOKIE = "revera_pais_entrega";
+export const PAIS_ESCOLHIDO_MAX_AGE_S = 60 * 60 * 24;
+
+export type OrigemDoDestino = "explicito" | "escolhido" | "detectado" | "idioma" | "padrao" | "invalido";
+
+export interface DestinoResolvido {
+  iso: string;
+  origem: OrigemDoDestino;
+}
+
+/** ISO alfa-2 que a tabela de países conhece, ou null. */
+export function paisConhecido(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  const iso = valor.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(iso)) return null;
+  return regraDoPais(iso) ? iso : null;
+}
+
+/**
+ * Mercado em que a rota localizada cai quando NADA mais diz o destino. É o
+ * comportamento anterior (`/en/checkout` → EUA), mantido só como último
+ * recurso: um alemão na Suíça abrindo `/de/checkout` por um anúncio ainda
+ * vê a Alemanha, não o CEP brasileiro.
+ */
+export function mercadoPadraoDoIdioma(locale: SiteLocale | null | undefined): string {
+  switch (locale) {
+    case "en":
+      return "US";
+    case "es":
+      return "ES";
+    case "fr":
+      return "FR";
+    case "de":
+      return "DE";
+    default:
+      return "BR";
+  }
+}
+
+/**
+ * Código que aparece na tela de indisponibilidade quando `?pais=` veio com
+ * valor que a tabela não conhece: só letras e dígitos, curto, nunca o texto
+ * cru da URL.
+ */
+function codigoParaExibir(valor: string): string {
+  const limpo = valor.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  return limpo || "??";
+}
+
+export function resolverPaisDeEntrega(entrada: {
+  explicito?: string | null;
+  escolhido?: string | null;
+  detectado?: string | null;
+  localeDaRota?: SiteLocale | null;
+}): DestinoResolvido {
+  const explicito = paisConhecido(entrada.explicito);
+  if (explicito) return { iso: explicito, origem: "explicito" };
+  // Parâmetro PRESENTE mas inválido não é o mesmo que ausente (Codex,
+  // 15/10/2026): `/checkout?pais=ZZ` não pode cair em silêncio no país da
+  // geolocalização nem no mercado do idioma. A tela diz "indisponível" e
+  // oferece as abas para escolher; nada é gravado em cookie.
+  if (typeof entrada.explicito === "string" && entrada.explicito.trim() !== "") {
+    return { iso: codigoParaExibir(entrada.explicito), origem: "invalido" };
+  }
+  const escolhido = paisConhecido(entrada.escolhido);
+  if (escolhido) return { iso: escolhido, origem: "escolhido" };
+  const detectado = paisConhecido(entrada.detectado);
+  if (detectado) return { iso: detectado, origem: "detectado" };
+  if (entrada.localeDaRota && entrada.localeDaRota !== DEFAULT_SITE_LOCALE) {
+    return { iso: mercadoPadraoDoIdioma(entrada.localeDaRota), origem: "idioma" };
+  }
+  return { iso: "BR", origem: "padrao" };
+}
+
+/**
+ * Idioma que o destino sugere quando ninguém escolheu idioma.
+ *
+ * Destino escolhido (URL ou cookie) usa a tabela completa: quem abriu
+ * `/checkout?pais=MX` lê a indisponibilidade em espanhol. Destino só
+ * detectado usa o mapa restrito aos mercados oferecidos (`localeFromCountry`):
+ * geolocalização em país que a loja não atende não troca a língua do site.
+ */
+export function idiomaPadraoDoDestino(destino: DestinoResolvido, localeDaRota?: SiteLocale | null): SiteLocale {
+  switch (destino.origem) {
+    case "explicito":
+    case "escolhido":
+      return idiomaDoPais(destino.iso);
+    case "detectado":
+      return localeFromCountry(destino.iso);
+    case "idioma":
+    case "invalido":
+      return localeDaRota && isSiteLocale(localeDaRota) ? localeDaRota : DEFAULT_SITE_LOCALE;
+    default:
+      return DEFAULT_SITE_LOCALE;
+  }
+}
+
+/**
+ * Idioma final da jornada. Rota explícita vence; depois a escolha manual
+ * gravada pelo seletor; por fim o padrão do destino.
+ */
+export function resolverIdiomaDaJornada(entrada: {
+  localeDaRota?: SiteLocale | null;
+  escolhaManual: boolean;
+  localeManual?: SiteLocale | null;
+  destino: DestinoResolvido;
+}): SiteLocale {
+  if (entrada.localeDaRota && isSiteLocale(entrada.localeDaRota)) return entrada.localeDaRota;
+  if (entrada.escolhaManual && entrada.localeManual && isSiteLocale(entrada.localeManual)) {
+    return entrada.localeManual;
+  }
+  return idiomaPadraoDoDestino(entrada.destino, entrada.localeDaRota);
+}
+
+/**
+ * Destino que a VITRINE localizada usa para moeda e preços.
+ *
+ * Mesma precedência do checkout (escolha da jornada → país detectado
+ * conhecido → mercado padrão do idioma), para a vitrine nunca mostrar a moeda
+ * de um mercado e o checkout negar outro (Codex, 15/10/2026). `aberto` diz se
+ * o checkout atende esse destino hoje (`atendidos` = CHECKOUT_PAISES); fechado,
+ * a vitrine não precifica e oferece a escolha de destino — nada de preço em
+ * moeda de outro país.
+ */
+export function destinoDaVitrine(entrada: {
+  locale: SiteLocale;
+  explicito?: string | null;
+  escolhido?: string | null;
+  detectado?: string | null;
+  atendidos: readonly string[];
+}): { iso: string; aberto: boolean } {
+  const atendidos = new Set(entrada.atendidos.map((p) => p.toUpperCase()));
+  // `?pais=` na URL da vitrine vale como no checkout (Codex, 15/10/2026):
+  // conhecido vence cookie e geolocalização; presente mas inválido fica
+  // fechado, sem cair em outro mercado.
+  const explicito = paisConhecido(entrada.explicito);
+  if (explicito) return { iso: explicito, aberto: atendidos.has(explicito) };
+  if (typeof entrada.explicito === "string" && entrada.explicito.trim() !== "") {
+    return { iso: codigoParaExibir(entrada.explicito), aberto: false };
+  }
+  const iso =
+    paisConhecido(entrada.escolhido) ??
+    paisConhecido(entrada.detectado) ??
+    mercadoPadraoDoIdioma(entrada.locale);
+  return { iso, aberto: atendidos.has(iso) };
+}
+
+/**
+ * Destino visível ao NAVEGADOR (cookies não-httpOnly gravados pelo
+ * middleware): país escolhido na jornada, senão o detectado na borda. Usado
+ * pela sacola para não abrir o drawer em real quando a entrega é fora do
+ * Brasil. Não tem autoridade: o servidor resolve de novo no checkout.
+ */
+export function destinoDoNavegador(cookieHeader: string | null | undefined): string | null {
+  if (!cookieHeader) return null;
+  const valores = new Map<string, string>();
+  for (const par of cookieHeader.split(";")) {
+    const [nome, ...resto] = par.split("=");
+    if (nome && resto.length > 0) valores.set(nome.trim(), decodeURIComponent(resto.join("=").trim()));
+  }
+  return paisConhecido(valores.get(PAIS_ESCOLHIDO_COOKIE)) ?? paisConhecido(valores.get(GEO_COUNTRY_COOKIE));
+}
+
+/** URL da aba de país do checkout, preservando o prefixo de idioma da rota. */
+export function hrefDoCheckoutDoPais(iso: string, localeDaRota?: SiteLocale | null): string {
+  const prefixo = localeDaRota && localeDaRota !== DEFAULT_SITE_LOCALE ? `/${localeDaRota}` : "";
+  return `${prefixo}/checkout?pais=${iso.toUpperCase()}`;
+}

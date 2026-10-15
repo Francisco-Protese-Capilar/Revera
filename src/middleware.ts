@@ -8,18 +8,69 @@ import {
   LOCALE_MANUAL_COOKIE,
   LOCALE_HEADER,
   isFullyLocalizedPath,
-  localeFromCountry,
   localeFromPath,
-  normalizeSiteLocale,
+  localeManualDosCookies,
   stripLocaleFromPath,
+  type SiteLocale,
 } from "@/lib/i18n/site";
+import {
+  PAIS_ESCOLHIDO_COOKIE,
+  PAIS_ESCOLHIDO_MAX_AGE_S,
+  resolverIdiomaDaJornada,
+  resolverPaisDeEntrega,
+  type DestinoResolvido,
+} from "@/lib/internacional/destino";
+
+function paisDetectado(request: NextRequest): string | null {
+  const pais = request.headers.get("x-vercel-ip-country")?.trim().toUpperCase();
+  return pais && /^[A-Z]{2}$/.test(pais) && pais !== "XX" ? pais : null;
+}
 
 function registrarPais(response: NextResponse, request: NextRequest): NextResponse {
-  const pais = request.headers.get("x-vercel-ip-country")?.trim().toUpperCase();
-  if (pais && /^[A-Z]{2}$/.test(pais) && pais !== "XX") {
+  const pais = paisDetectado(request);
+  if (pais) {
     response.cookies.set(GEO_COUNTRY_COOKIE, pais, { path: "/", sameSite: "lax", maxAge: 60 * 60 * 24 });
   }
   return response;
+}
+
+/**
+ * PAÍS ESCOLHIDO SOBREVIVE À JORNADA (15/10/2026, A1 da auditoria).
+ *
+ * Quem abre `/checkout?pais=GB` (aba de país, link de anúncio) escolheu o
+ * destino. A escolha fica num cookie de um dia para o carrinho, a página de
+ * produto e `/en/checkout` sem query continuarem no Reino Unido — e para o
+ * idioma padrão (quando ninguém escolheu idioma) seguir o destino. Só grava
+ * em carregamento de página de verdade, pela mesma razão do cookie de idioma:
+ * pré-carga não é escolha.
+ */
+function gravarPaisEscolhido(response: NextResponse, destino: DestinoResolvido, gravaEscolha: boolean): NextResponse {
+  if (gravaEscolha && destino.origem === "explicito") {
+    response.cookies.set(PAIS_ESCOLHIDO_COOKIE, destino.iso, {
+      path: "/",
+      sameSite: "lax",
+      maxAge: PAIS_ESCOLHIDO_MAX_AGE_S,
+    });
+  }
+  return response;
+}
+
+/**
+ * O destino que a PÁGINA vai resolver, calculado aqui com as mesmas funções,
+ * para o `<html lang>` do layout (que lê LOCALE_HEADER) concordar com o
+ * `<main lang>` do checkout.
+ */
+function destinoDaRequisicao(request: NextRequest, localeDaRota: SiteLocale | null): DestinoResolvido {
+  // `?pais=` vale em qualquer página pública (checkout, produto, catálogo —
+  // um anúncio pode apontar para `/en/produtos/x?pais=GB`): o país
+  // conhecido vira a escolha da jornada.
+  const explicito = request.nextUrl.searchParams.get("pais");
+  return resolverPaisDeEntrega({
+    explicito,
+    escolhido: request.cookies.get(PAIS_ESCOLHIDO_COOKIE)?.value,
+    detectado: paisDetectado(request),
+    localeDaRota,
+  });
 }
 
 function shouldIgnore(pathname: string): boolean {
@@ -69,7 +120,10 @@ function ehPreCarga(request: NextRequest): boolean {
  */
 function paisExplicitoNoCheckout(request: NextRequest): boolean {
   const { pathname, searchParams } = request.nextUrl;
-  return pathname === "/checkout" && /^[A-Za-z]{2}$/.test(searchParams.get("pais") ?? "");
+  // Qualquer `?pais=` presente (válido ou não) fica com a página: um valor
+  // desconhecido vira tela de indisponibilidade, não redirect para outro
+  // mercado. Só o valor conhecido vira cookie (gravarPaisEscolhido).
+  return pathname === "/checkout" && (searchParams.get("pais") ?? "").trim() !== "";
 }
 
 function ehLeitura(request: NextRequest): boolean {
@@ -105,16 +159,22 @@ export function middleware(request: NextRequest) {
   const gravaEscolha = navegacao && ehCarregamentoDePagina(request);
 
   const localeInPath = localeFromPath(pathname);
+  const cookie = (nome: string) => request.cookies.get(nome)?.value;
 
   if (!localeInPath) {
-    // A entrada sem prefixo representa uma nova visita e segue o país real
+    // A entrada sem prefixo representa uma nova visita e segue o destino:
+    // país escolhido nesta jornada (cookie de um dia) ou o país real
     // detectado na borda. Um cookie antigo de viagem/idioma não pode mandar
-    // um comprador brasileiro de anúncio para /de ou /en.
-    const escolhaManual = request.cookies.get(LOCALE_MANUAL_COOKIE)?.value === "1";
-    const localeManual = escolhaManual
-      ? normalizeSiteLocale(request.cookies.get(LOCALE_COOKIE)?.value)
-      : null;
-    const locale = localeManual ?? localeFromCountry(request.headers.get("x-vercel-ip-country"));
+    // um comprador brasileiro de anúncio para /de ou /en — só a escolha
+    // manual de idioma vence o destino.
+    const localeManual = localeManualDosCookies(cookie);
+    const destino = destinoDaRequisicao(request, null);
+    const locale = resolverIdiomaDaJornada({
+      localeDaRota: null,
+      escolhaManual: localeManual !== null,
+      localeManual,
+      destino,
+    });
     // Pré-carga não redireciona nem marca geolocalização pendente: o clique
     // de verdade é que decide, e chega sem o cabeçalho de pré-carga.
     if (
@@ -140,14 +200,12 @@ export function middleware(request: NextRequest) {
       return registrarPais(response, request);
     }
 
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set(LOCALE_HEADER, locale);
-    const paisAtual = request.headers.get("x-vercel-ip-country")?.trim().toUpperCase();
-    if (paisAtual && /^[A-Z]{2}$/.test(paisAtual) && paisAtual !== "XX") {
-      requestHeaders.set(GEO_COUNTRY_HEADER, paisAtual);
-    }
-
-    return registrarPais(NextResponse.next({ request: { headers: requestHeaders } }), request);
+    const requestHeaders = cabecalhosDaPagina(request, locale);
+    return gravarPaisEscolhido(
+      registrarPais(NextResponse.next({ request: { headers: requestHeaders } }), request),
+      destino,
+      gravaEscolha
+    );
   }
 
   const strippedPath = stripLocaleFromPath(pathname);
@@ -163,14 +221,32 @@ export function middleware(request: NextRequest) {
   ) {
     const response = NextResponse.redirect(url);
     if (gravaEscolha) gravarIdioma(response, localeInPath, veioDaGeolocalizacao);
-    return registrarPais(response, request);
+    // `/pt/checkout?pais=GB` volta para `/checkout?pais=GB`: o país escolhido
+    // já fica gravado aqui, não só no destino do redirect.
+    return gravarPaisEscolhido(
+      registrarPais(response, request),
+      destinoDaRequisicao(request, localeInPath),
+      gravaEscolha
+    );
   }
 
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set(LOCALE_HEADER, localeInPath);
+  const requestHeaders = cabecalhosDaPagina(request, localeInPath);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   if (gravaEscolha) gravarIdioma(response, localeInPath, veioDaGeolocalizacao);
-  return registrarPais(response, request);
+  return gravarPaisEscolhido(
+    registrarPais(response, request),
+    destinoDaRequisicao(request, localeInPath),
+    gravaEscolha
+  );
+}
+
+/** Idioma resolvido e país detectado seguem para a página pelos cabeçalhos. */
+function cabecalhosDaPagina(request: NextRequest, locale: SiteLocale): Headers {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(LOCALE_HEADER, locale);
+  const paisAtual = paisDetectado(request);
+  if (paisAtual) requestHeaders.set(GEO_COUNTRY_HEADER, paisAtual);
+  return requestHeaders;
 }
 
 function gravarIdioma(response: NextResponse, locale: string, veioDaGeolocalizacao: boolean) {

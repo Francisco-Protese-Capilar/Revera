@@ -45,16 +45,45 @@ export function localeFromAcceptLanguage(acceptLanguage: string | null | undefin
   return candidates[0]?.locale ?? DEFAULT_SITE_LOCALE;
 }
 
+/**
+ * Idioma padrão de cada mercado que o checkout oferece.
+ *
+ * Mapa restrito de propósito aos nove destinos do seletor (15/10/2026): a
+ * geolocalização só escolhe língua para quem a loja atende. Um visitante do
+ * México continua lendo português — a tabela completa de países
+ * (`src/lib/internacional/paises.ts`) fica para o destino escolhido de
+ * verdade. O teste `checkout-pais-idioma` confere que este mapa bate com
+ * `PAISES[iso].idioma`, para as duas fontes não divergirem.
+ *
+ * Idioma não é mercado: mapear GB → en só traduz a vitrine. A moeda e o
+ * formulário vêm do destino resolvido em `src/lib/internacional/destino.ts`.
+ */
+export const LOCALE_BY_MARKET_COUNTRY: Readonly<Record<string, SiteLocale>> = {
+  BR: "pt",
+  PT: "pt",
+  US: "en",
+  GB: "en",
+  CA: "en",
+  AU: "en",
+  ES: "es",
+  FR: "fr",
+  DE: "de",
+};
+
 /** Idioma inicial da vitrine segundo o país detectado pela Vercel. */
 export function localeFromCountry(country: string | null | undefined): SiteLocale {
-  const iso = country?.trim().toUpperCase();
-  // A abertura internacional é deliberadamente limitada aos quatro países
-  // testados. Idioma compartilhado não autoriza inferir outro mercado.
-  if (iso === "US") return "en";
-  if (iso === "ES") return "es";
-  if (iso === "FR") return "fr";
-  if (iso === "DE") return "de";
-  return DEFAULT_SITE_LOCALE;
+  const iso = country?.trim().toUpperCase() ?? "";
+  return LOCALE_BY_MARKET_COUNTRY[iso] ?? DEFAULT_SITE_LOCALE;
+}
+
+/**
+ * Lê a escolha MANUAL de idioma dos cookies, ou null quando não houve
+ * escolha. `cookie(nome)` abstrai `request.cookies` (middleware) e
+ * `cookies()` (páginas), que têm formas diferentes.
+ */
+export function localeManualDosCookies(cookie: (nome: string) => string | undefined): SiteLocale | null {
+  if (cookie(LOCALE_MANUAL_COOKIE) !== "1") return null;
+  return normalizeSiteLocale(cookie(LOCALE_COOKIE));
 }
 
 export function localeFromPath(pathname: string): SiteLocale | null {
@@ -114,11 +143,26 @@ export function isFullyLocalizedPath(pathname: string): boolean {
  * middleware sabe que foi uma escolha manual, grava o cookie `pt` e so entao
  * limpa a URL para `/...`.
  */
-export function localeSwitchPath(pathname: string, locale: SiteLocale): string {
+export function localeSwitchPath(pathname: string, locale: SiteLocale, search?: string | null): string {
   const cleanPath = stripLocaleFromPath(pathname);
   const prefix = `/${locale}`;
-  if (cleanPath === "/") return prefix;
-  return `${prefix}${cleanPath}`;
+  const base = cleanPath === "/" ? prefix : `${prefix}${cleanPath}`;
+  return `${base}${queryPreservadaNaTrocaDeIdioma(search)}`;
+}
+
+/**
+ * O que da query string sobrevive à troca de idioma (A1 da auditoria de
+ * 15/10/2026): só o país de entrega. Trocar a tradução em
+ * `/checkout?pais=GB` levava a `/en/checkout`, e a rota em inglês impunha os
+ * EUA — destino e moeda trocados por um clique de idioma. Lista fechada:
+ * tokens de pedido, parâmetros de retorno de gateway e UTMs não viajam.
+ */
+export function queryPreservadaNaTrocaDeIdioma(search: string | null | undefined): string {
+  if (!search) return "";
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const pais = params.get("pais")?.trim().toUpperCase();
+  if (!pais || !/^[A-Z]{2}$/.test(pais)) return "";
+  return `?pais=${pais}`;
 }
 
 export const LANG_BY_SITE_LOCALE: Record<SiteLocale, string> = {

@@ -13,6 +13,12 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({
   from: () => ({ select: () => ({ order: async () => ({ data: [] }) }) }),
 }) }));
 vi.mock("@/lib/conteudo/fotos-do-site", () => ({ urlDaFotoDoSite: async (path: string) => path }));
+// A vitrine resolve o país de entrega por cookies/cabeçalhos (15/10/2026);
+// fora de uma requisição, sem nada disso, cai no Brasil.
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: () => undefined }),
+  headers: async () => ({ get: () => null }),
+}));
 beforeEach(() => vi.stubGlobal("React", React));
 afterEach(() => vi.unstubAllGlobals());
 const logo = "/media/marca/logo-revera.png";
@@ -30,7 +36,9 @@ it("logo preserva proporção e arquivo, com candidatos de até 384px", () => {
 });
 it("hero entrega a mesma foto pelo otimizador, mantendo recorte e espaço reservado", async () => {
   const doc = new DOMParser().parseFromString(renderToStaticMarkup(await ProdutosContent()), "text/html");
-  const img = doc.querySelector<HTMLImageElement>('img[alt="Prótese capilar Reverá com acabamento natural"]')!;
+  // Sem produtos no banco simulado, o destaque cai na foto e no alt padrão
+  // (commit 4f8e66f trocou o alt do hero para a Micropele).
+  const img = doc.querySelector<HTMLImageElement>('img[alt="Prótese capilar Micropele 0,08 com nó"]')!;
   expect(img.srcset).toContain("/_next/image?");
   expect(new URL(img.getAttribute("src")!, "https://example.test").searchParams.get("url")).toBe("/media/hero/produto-close-1.jpeg");
   expect(img.sizes).toContain("768px");

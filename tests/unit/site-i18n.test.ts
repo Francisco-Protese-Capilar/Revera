@@ -190,16 +190,16 @@ describe("i18n publico do site", () => {
     expect(middleware(request).headers.get("location")).toBeNull();
   });
 
-  it.each([
-    ["br", null],
-    ["US", null],
-    ["BRA", "https://www.reveraprotesecapilar.com/en/checkout?pais=BRA"],
-    ["1", "https://www.reveraprotesecapilar.com/en/checkout?pais=1"],
-  ])("pais=%s com geo US: só duas letras dispensam o redirecionamento", (pais, location) => {
+  // Até 15/10/2026 só duas letras dispensavam o redirecionamento, e
+  // `?pais=BRA` ia para o checkout do país da geolocalização. Agora qualquer
+  // `?pais=` presente fica com a página: valor desconhecido vira tela de
+  // indisponibilidade (tests/unit/checkout-pais-idioma.test.ts), nunca outro
+  // mercado em silêncio.
+  it.each(["br", "US", "BRA", "1"])("pais=%s com geo US: a página decide, sem redirecionar para o mercado da geolocalização", (pais) => {
     const request = new NextRequest(`https://www.reveraprotesecapilar.com/checkout?pais=${pais}`, {
       headers: { "x-vercel-ip-country": "US" },
     });
-    expect(middleware(request).headers.get("location")).toBe(location);
+    expect(middleware(request).headers.get("location")).toBeNull();
   });
 
   it("checkout sem país continua seguindo a geolocalização", () => {

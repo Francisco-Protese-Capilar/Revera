@@ -664,11 +664,30 @@ export class PayPalProvider implements PaymentProvider {
   }
 }
 
-function localePayPal(locale: string | undefined): string {
-  const l = locale?.toLowerCase() ?? "";
-  if (l.startsWith("es")) return "es-ES";
-  if (l.startsWith("pt")) return "pt-BR";
-  return "en-US";
+/**
+ * De um idioma nosso ("fr", "de", "pt-PT"...) para um locale que o PayPal
+ * aceita em `experience_context.locale` (lista oficial:
+ * https://developer.paypal.com/api/codes/locale/).
+ *
+ * Até 15/10/2026 só espanhol e português eram tratados; francês e alemão
+ * viravam `en-US` (A3 da auditoria). Variante regional conhecida é
+ * preservada (en-GB, en-AU, fr-CA, pt-PT); idioma genérico recebe a
+ * variante principal; desconhecido cai em inglês, como antes.
+ */
+export function localePayPal(locale: string | undefined): string {
+  const l = locale?.toLowerCase().replace("_", "-") ?? "";
+  const [idioma, regiao] = l.split("-");
+  const regional: Record<string, string[]> = {
+    en: ["us", "gb", "au"],
+    es: ["es"],
+    pt: ["br", "pt"],
+    fr: ["fr", "ca"],
+    de: ["de"],
+  };
+  const principal: Record<string, string> = { en: "en-US", es: "es-ES", pt: "pt-BR", fr: "fr-FR", de: "de-DE" };
+  if (!idioma || !(idioma in principal)) return "en-US";
+  if (regiao && regional[idioma]?.includes(regiao)) return `${idioma}-${regiao.toUpperCase()}`;
+  return principal[idioma]!;
 }
 
 export { urlCheckoutPayPalSegura };

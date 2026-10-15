@@ -19,6 +19,7 @@ async function localeDosParams(params: Promise<{ locale: string }>): Promise<Sit
   return normalizado;
 }
 
-export default async function LocalizedProdutosPage({ params }: { params: Promise<{ locale: string }> }) {
-  return <ProdutosContent locale={await localeDosParams(params)} />;
+export default async function LocalizedProdutosPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ pais?: string }> }) {
+  const { pais } = await searchParams;
+  return <ProdutosContent locale={await localeDosParams(params)} paisExplicito={pais} />;
 }

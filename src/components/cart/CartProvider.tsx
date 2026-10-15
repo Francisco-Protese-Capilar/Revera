@@ -11,6 +11,7 @@ import {
 } from "@/lib/cart/actions";
 import { CARRINHO_VAZIO, type CartView } from "@/lib/cart/types";
 import { localeFromPath, localizePath } from "@/lib/i18n/site";
+import { destinoDoNavegador } from "@/lib/internacional/destino";
 
 interface CartContextValue {
   cart: CartView;
@@ -130,6 +131,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         // uma moeda/desconto diferente do checkout internacional.
         abrirDrawer: () => {
           if (locale !== "pt") router.push(`/${locale}/checkout`);
+          // Português com entrega fora do Brasil (cookie da jornada ou país
+          // detectado): mesma regra, o checkout precifica no servidor.
+          else if ((destinoDoNavegador(document.cookie) ?? "BR") !== "BR") router.push("/checkout");
           else setDrawerAberto(true);
         },
         fecharDrawer: () => setDrawerAberto(false),

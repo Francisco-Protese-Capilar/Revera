@@ -45,13 +45,109 @@ import { ACEITE_INTERNACIONAL_VERSAO } from "@/lib/internacional/aceite";
 import { cotacaoDhlPermitida, origemCotacaoDhl } from "@/lib/internacional/ambiente-cotacao";
 import { idiomaDoPais } from "@/lib/internacional/paises";
 import { textos, type Idioma } from "@/lib/internacional/idioma";
+import { isSiteLocale } from "@/lib/i18n/site";
 
-const ERROS_COTACAO: Record<Idioma, { indisponivel: string; limite: (segundos: number) => string; mudou: string; manual: string }> = {
-  pt: { indisponivel: "A consulta de frete está temporariamente indisponível. Tente novamente mais tarde.", limite: (s) => `Muitas consultas de frete. Aguarde ${s} segundos e tente novamente.`, mudou: "A cotação expirou ou mudou na nova consulta da DHL. Confira as condições atualizadas e confirme novamente.", manual: "Este carrinho precisa de uma cotação DHL feita pela nossa equipe." },
-  en: { indisponivel: "Shipping quotes are temporarily unavailable. Please try again later.", limite: (s) => `Too many shipping quote requests. Wait ${s} seconds and try again.`, mudou: "The quote expired or changed after the DHL recheck. Review the updated shipping conditions and confirm again.", manual: "This cart requires a DHL quote prepared by our team." },
-  es: { indisponivel: "Las cotizaciones de envío no están disponibles temporalmente. Inténtalo más tarde.", limite: (s) => `Hay demasiadas consultas de envío. Espera ${s} segundos e inténtalo de nuevo.`, mudou: "La cotización venció o cambió al volver a consultar DHL. Revisa las condiciones actualizadas y confirma de nuevo.", manual: "Este carrito necesita una cotización DHL preparada por nuestro equipo." },
-  fr: { indisponivel: "Les tarifs de livraison sont temporairement indisponibles. Réessayez plus tard.", limite: (s) => `Trop de demandes de tarif. Attendez ${s} secondes puis réessayez.`, mudou: "Le tarif a expiré ou changé après la nouvelle vérification DHL. Vérifiez les conditions mises à jour et confirmez à nouveau.", manual: "Ce panier nécessite un tarif DHL préparé par notre équipe." },
-  de: { indisponivel: "Versandangebote sind vorübergehend nicht verfügbar. Versuchen Sie es später erneut.", limite: (s) => `Zu viele Versandanfragen. Warten Sie ${s} Sekunden und versuchen Sie es erneut.`, mudou: "Das Angebot ist abgelaufen oder hat sich nach der erneuten DHL-Prüfung geändert. Prüfen Sie die aktualisierten Bedingungen und bestätigen Sie erneut.", manual: "Für diesen Warenkorb muss unser Team ein DHL-Angebot erstellen." },
+/**
+ * Mensagens de erro que o comprador lê, nas cinco línguas (A4 da auditoria
+ * de 15/10/2026: várias ficavam fixas em português). `mercadoFechado` não
+ * repete `mercado.motivo`, que é diagnóstico interno em português.
+ */
+export const ERROS_COTACAO: Record<Idioma, {
+  indisponivel: string;
+  limite: (segundos: number) => string;
+  mudou: string;
+  manual: string;
+  meioIndisponivel: string;
+  mercadoFechado: string;
+  cambio: string;
+  dhlEndereco: string;
+  dhlServico: string;
+  dhlAmbiente: string;
+  assinatura: string;
+  gravarCotacao: string;
+  criarPedido: string;
+  registrarItens: string;
+}> = {
+  pt: {
+    indisponivel: "A consulta de frete está temporariamente indisponível. Tente novamente mais tarde.",
+    limite: (s) => `Muitas consultas de frete. Aguarde ${s} segundos e tente novamente.`,
+    mudou: "A cotação expirou ou mudou na nova consulta da DHL. Confira as condições atualizadas e confirme novamente.",
+    manual: "Este carrinho precisa de uma cotação DHL feita pela nossa equipe.",
+    meioIndisponivel: "Este meio de pagamento não está disponível agora.",
+    mercadoFechado: "Não foi possível concluir: as vendas para este destino não estão disponíveis no momento.",
+    cambio: "Não foi possível calcular o câmbio agora. Tente novamente em instantes.",
+    dhlEndereco: "A DHL não conseguiu calcular o frete para este endereço agora. Confira os dados ou tente novamente.",
+    dhlServico: "A DHL não retornou um serviço de envio compatível para este endereço.",
+    dhlAmbiente: "O frete internacional está temporariamente indisponível para pagamento.",
+    assinatura: "Não foi possível validar a cotação. Tente novamente em instantes.",
+    gravarCotacao: "Não foi possível confirmar a cotação DHL. Tente novamente.",
+    criarPedido: "Não foi possível criar o pedido agora. Tente novamente em instantes.",
+    registrarItens: "Não foi possível registrar os itens do pedido. Tente novamente.",
+  },
+  en: {
+    indisponivel: "Shipping quotes are temporarily unavailable. Please try again later.",
+    limite: (s) => `Too many shipping quote requests. Wait ${s} seconds and try again.`,
+    mudou: "The quote expired or changed after the DHL recheck. Review the updated shipping conditions and confirm again.",
+    manual: "This cart requires a DHL quote prepared by our team.",
+    meioIndisponivel: "This payment method is not available right now.",
+    mercadoFechado: "We could not complete this: sales to this destination are not available at the moment.",
+    cambio: "We could not calculate the exchange rate right now. Please try again in a moment.",
+    dhlEndereco: "DHL could not calculate shipping for this address right now. Check the details or try again.",
+    dhlServico: "DHL did not return a compatible shipping service for this address.",
+    dhlAmbiente: "International shipping is temporarily unavailable for payment.",
+    assinatura: "We could not validate the quote. Please try again in a moment.",
+    gravarCotacao: "We could not confirm the DHL quote. Please try again.",
+    criarPedido: "We could not create the order right now. Please try again in a moment.",
+    registrarItens: "We could not register the order items. Please try again.",
+  },
+  es: {
+    indisponivel: "Las cotizaciones de envío no están disponibles temporalmente. Inténtalo más tarde.",
+    limite: (s) => `Hay demasiadas consultas de envío. Espera ${s} segundos e inténtalo de nuevo.`,
+    mudou: "La cotización venció o cambió al volver a consultar DHL. Revisa las condiciones actualizadas y confirma de nuevo.",
+    manual: "Este carrito necesita una cotización DHL preparada por nuestro equipo.",
+    meioIndisponivel: "Este medio de pago no está disponible ahora.",
+    mercadoFechado: "No fue posible concluir: las ventas a este destino no están disponibles en este momento.",
+    cambio: "No fue posible calcular el cambio ahora. Inténtalo de nuevo en unos instantes.",
+    dhlEndereco: "DHL no pudo calcular el envío para esta dirección ahora. Revisa los datos o inténtalo de nuevo.",
+    dhlServico: "DHL no devolvió un servicio de envío compatible para esta dirección.",
+    dhlAmbiente: "El envío internacional no está disponible temporalmente para el pago.",
+    assinatura: "No fue posible validar la cotización. Inténtalo de nuevo en unos instantes.",
+    gravarCotacao: "No fue posible confirmar la cotización DHL. Inténtalo de nuevo.",
+    criarPedido: "No fue posible crear el pedido ahora. Inténtalo de nuevo en unos instantes.",
+    registrarItens: "No fue posible registrar los artículos del pedido. Inténtalo de nuevo.",
+  },
+  fr: {
+    indisponivel: "Les tarifs de livraison sont temporairement indisponibles. Réessayez plus tard.",
+    limite: (s) => `Trop de demandes de tarif. Attendez ${s} secondes puis réessayez.`,
+    mudou: "Le tarif a expiré ou changé après la nouvelle vérification DHL. Vérifiez les conditions mises à jour et confirmez à nouveau.",
+    manual: "Ce panier nécessite un tarif DHL préparé par notre équipe.",
+    meioIndisponivel: "Ce moyen de paiement n’est pas disponible pour le moment.",
+    mercadoFechado: "Impossible de finaliser : les ventes vers cette destination ne sont pas disponibles pour le moment.",
+    cambio: "Impossible de calculer le taux de change pour le moment. Réessayez dans un instant.",
+    dhlEndereco: "DHL n’a pas pu calculer la livraison pour cette adresse. Vérifiez les informations ou réessayez.",
+    dhlServico: "DHL n’a renvoyé aucun service de livraison compatible pour cette adresse.",
+    dhlAmbiente: "La livraison internationale est temporairement indisponible pour le paiement.",
+    assinatura: "Impossible de valider le tarif. Réessayez dans un instant.",
+    gravarCotacao: "Impossible de confirmer le tarif DHL. Réessayez.",
+    criarPedido: "Impossible de créer la commande pour le moment. Réessayez dans un instant.",
+    registrarItens: "Impossible d’enregistrer les articles de la commande. Réessayez.",
+  },
+  de: {
+    indisponivel: "Versandangebote sind vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
+    limite: (s) => `Zu viele Versandanfragen. Warten Sie ${s} Sekunden und versuchen Sie es erneut.`,
+    mudou: "Das Angebot ist abgelaufen oder hat sich nach der erneuten DHL-Prüfung geändert. Prüfen Sie die aktualisierten Bedingungen und bestätigen Sie erneut.",
+    manual: "Für diesen Warenkorb muss unser Team ein DHL-Angebot erstellen.",
+    meioIndisponivel: "Diese Zahlungsmethode ist derzeit nicht verfügbar.",
+    mercadoFechado: "Abschluss nicht möglich: Verkäufe in dieses Zielland sind derzeit nicht verfügbar.",
+    cambio: "Der Wechselkurs konnte gerade nicht berechnet werden. Versuchen Sie es in Kürze erneut.",
+    dhlEndereco: "DHL konnte den Versand für diese Adresse gerade nicht berechnen. Prüfen Sie die Angaben oder versuchen Sie es erneut.",
+    dhlServico: "DHL hat keinen passenden Versandservice für diese Adresse zurückgegeben.",
+    dhlAmbiente: "Der internationale Versand ist vorübergehend nicht für die Zahlung verfügbar.",
+    assinatura: "Das Angebot konnte nicht validiert werden. Versuchen Sie es in Kürze erneut.",
+    gravarCotacao: "Das DHL-Angebot konnte nicht bestätigt werden. Versuchen Sie es erneut.",
+    criarPedido: "Die Bestellung konnte gerade nicht angelegt werden. Versuchen Sie es in Kürze erneut.",
+    registrarItens: "Die Artikel der Bestellung konnten nicht gespeichert werden. Versuchen Sie es erneut.",
+  },
 };
 import { obterCotacaoPtax } from "@/lib/internacional/cambio-ptax";
 import { cotarDhlOperacional } from "@/lib/shipping/dhl/admin-quote";
@@ -107,6 +203,11 @@ function construirSchema(idioma: Idioma) {
     .catch(null),
   confirmarCotacao: z.string().min(20).max(4096).optional().nullable(),
   paymentPreference: z.enum(["stripe", "paypal"]),
+  /**
+   * Idioma em que a tela foi lida (15/10/2026). Só escolhe a língua das
+   * mensagens; país, moeda e preço continuam vindo do destino validado.
+   */
+  idioma: z.enum(["pt", "en", "es", "fr", "de"]).optional(),
   });
 }
 
@@ -132,7 +233,13 @@ export type CheckoutInternacionalInput = z.input<typeof schemaInternacional>;
  * payload adulterado no máximo recebe a recusa na língua errada.
  */
 function idiomaDoPayload(input: unknown): Idioma {
-  if (typeof input !== "object" || input === null || !("pais" in input)) return "pt";
+  if (typeof input !== "object" || input === null) return "pt";
+  // Idioma da jornada (escolha manual ou prefixo da rota) vence o padrão do
+  // país: quem leu o formulário em francês com entrega na Alemanha recebe o
+  // erro em francês. Valor fora da lista cai no idioma do país.
+  const idiomaBruto = (input as { idioma?: unknown }).idioma;
+  if (typeof idiomaBruto === "string" && isSiteLocale(idiomaBruto)) return idiomaBruto;
+  if (!("pais" in input)) return "pt";
   const bruto = (input as { pais: unknown }).pais;
   return idiomaDoPais(typeof bruto === "string" ? bruto : "BR");
 }
@@ -163,7 +270,7 @@ export async function criarPedidoInternacionalAction(
   }
   const gatewaysDisponiveis = await provedoresInternacionaisDisponiveis();
   if (!gatewaysDisponiveis.includes(dados.paymentPreference)) {
-    return { erro: t.erroConfiraCampos, camposComErro: { paymentPreference: "Este meio de pagamento não está disponível agora." } };
+    return { erro: t.erroConfiraCampos, camposComErro: { paymentPreference: ERROS_COTACAO[idioma].meioIndisponivel } };
   }
 
   // A única porta de validação de endereço internacional — inclui a regra
@@ -199,7 +306,8 @@ export async function criarPedidoInternacionalAction(
    */
   const mercado = await prontidaoDoMercado(dados.pais);
   if (!mercado.aberto) {
-    return { erro: `Não foi possível concluir: ${mercado.motivo}` };
+    console.error("[checkout-intl] mercado fechado na confirmação", { pais: dados.pais, motivo: mercado.motivo });
+    return { erro: ERROS_COTACAO[idioma].mercadoFechado };
   }
 
   const carrinho = await lerCarrinhoCompleto();
@@ -212,7 +320,7 @@ export async function criarPedidoInternacionalAction(
     cambio = await obterCotacaoPtax(mercado.moeda);
   } catch (erro) {
     console.error("[checkout-intl] falha ao obter PTAX", erro);
-    return { erro: "Não foi possível calcular o câmbio agora. Tente novamente em instantes." };
+    return { erro: ERROS_COTACAO[idioma].cambio };
   }
 
   // A linha ativa em variant_prices funciona como autorização de exportação;
@@ -267,18 +375,18 @@ export async function criarPedidoInternacionalAction(
     console.error("[checkout-intl] falha ao cotar DHL", {
       errorName: erro instanceof Error ? erro.name : "unknown",
     });
-    return { erro: "A DHL não conseguiu calcular o frete para este endereço agora. Confira os dados ou tente novamente." };
+    return { erro: ERROS_COTACAO[idioma].dhlEndereco };
   }
   const escolher = (quotes: DhlQuote[]) =>
     quotes.find((q) => q.productCode === "8" && q.currency === mercado.moeda) ??
     quotes.find((q) => q.productCode === "P" && q.currency === mercado.moeda);
   const frete = escolher(cotacaoDhl.quotes);
   if (!frete || frete.priceCents <= 0) {
-    return { erro: "A DHL não retornou um serviço de envio compatível para este endereço." };
+    return { erro: ERROS_COTACAO[idioma].dhlServico };
   }
   if (!cotacaoDhlPermitida(cotacaoDhl.ambiente)) {
     console.error("[checkout-intl] ambiente da cotação DHL incompatível com o checkout");
-    return { erro: "O frete internacional está temporariamente indisponível para pagamento." };
+    return { erro: ERROS_COTACAO[idioma].dhlAmbiente };
   }
 
   const subtotalCents = precos.subtotalCents;
@@ -331,7 +439,7 @@ export async function criarPedidoInternacionalAction(
     tokenCotacao = emitirConfirmacaoCotacao(payloadConfirmacao);
   } catch {
     console.error("[checkout-intl] não foi possível assinar a cotação", { errorCode: "signing-key-unavailable" });
-    return { erro: "Não foi possível validar a cotação. Tente novamente em instantes." };
+    return { erro: ERROS_COTACAO[idioma].assinatura };
   }
   const cotacaoComToken = { ...cotacao, token: tokenCotacao };
 
@@ -423,7 +531,7 @@ export async function criarPedidoInternacionalAction(
   });
   if (erroCotacaoInicial) {
     console.error("[checkout-intl] falha ao gravar cotação DHL", erroCotacaoInicial);
-    return falhar("Não foi possível confirmar a cotação DHL. Tente novamente.");
+    return falhar(ERROS_COTACAO[idioma].gravarCotacao);
   }
 
   const { error: erroCustomer } = await admin.from("customers").insert({
@@ -544,11 +652,11 @@ export async function criarPedidoInternacionalAction(
       orderNumber = gerarNumeroPedido();
     } else {
       console.error("[checkout-intl] falha ao criar pedido", error);
-      return falhar("Não foi possível criar o pedido agora. Tente novamente em instantes.");
+      return falhar(ERROS_COTACAO[idioma].criarPedido);
     }
   }
   if (!pedidoCriado) {
-    return falhar("Não foi possível criar o pedido agora. Tente novamente em instantes.");
+    return falhar(ERROS_COTACAO[idioma].criarPedido);
   }
 
   const porVariante = new Map(precos.itens.map((i) => [i.variantId, i]));
@@ -572,7 +680,7 @@ export async function criarPedidoInternacionalAction(
       code: erroItens.code,
       message: erroItens.message,
     });
-    return desfazerPedidoParcial("Não foi possível registrar os itens do pedido. Tente novamente.");
+    return desfazerPedidoParcial(ERROS_COTACAO[idioma].registrarItens);
   }
 
   const { error: erroCotacao } = await admin.from("shipping_quotes")
@@ -580,7 +688,7 @@ export async function criarPedidoInternacionalAction(
     .select("id").single();
   if (erroCotacao) {
     console.error("[checkout-intl] falha ao gravar recibo DHL", erroCotacao);
-    return desfazerPedidoParcial("Não foi possível confirmar a cotação DHL. Tente novamente.");
+    return desfazerPedidoParcial(ERROS_COTACAO[idioma].gravarCotacao);
   }
 
   const avisoEmail = await avisarPedidoPendentePorEmail({

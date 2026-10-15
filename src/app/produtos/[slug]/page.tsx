@@ -5,6 +5,8 @@ import { baseUrl } from "@/lib/config/urls";
 import { textosDaPagina } from "@/lib/conteudo/textos";
 import { urlsDasFotosDoSite } from "@/lib/conteudo/fotos-do-site";
 import { ProdutoInterativo } from "./ProdutoInterativo";
+import { mercadoDaVitrine } from "@/lib/internacional/destino-server";
+import { renderProdutoInternacional } from "@/app/[locale]/produtos/[slug]/carregar";
 
 function jsonLdSeguro(valor: unknown) {
   return JSON.stringify(valor).replace(/</g, "\\u003c");
@@ -101,10 +103,19 @@ export async function generateMetadata({
 
 export default async function ProdutoPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ pais?: string }>;
 }) {
   const { slug } = await params;
+  // Entrega fora do Brasil lida em português (Portugal, ou destino escolhido
+  // antes de voltar ao idioma): a página nacional — escada de desconto, Pix,
+  // frete por CEP — não vale. Mesma precificação da rota localizada.
+  const { pais: paisExplicito } = await searchParams;
+  const mercado = await mercadoDaVitrine("pt", paisExplicito);
+  if (!mercado.nacional) return renderProdutoInternacional(slug, "pt", paisExplicito);
+
   const supabase = await createClient();
 
   const { data: produto } = await supabase

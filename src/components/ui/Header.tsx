@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { CartTriggerButton } from "@/components/cart/CartTriggerButton";
 import { HEADER_HEIGHT_PX } from "@/lib/layout/header";
 import {
@@ -264,24 +264,48 @@ export function Header({ locale = "pt", logo, menuPrincipal = LINKS, menuConheca
             ))}
           </nav>
         </details>
-        <nav className="hidden items-center gap-1 md:flex" aria-label="Idioma">
-          {SITE_LOCALES.map((l) => (
-            // <a>, não <Link>: a troca de idioma precisa ser um carregamento
-            // de página inteiro — só ele grava o cookie (ver middleware.ts).
-            <a
-              key={l}
-              href={localeSwitchPath(pathname ?? "/", l)}
-              className={`rounded px-2 py-1 text-xs font-semibold uppercase ${
-                l === localeAtual ? "bg-paper text-ink" : "text-paper/70 hover:text-gold"
-              }`}
-              hrefLang={l === "pt" ? "pt-BR" : l}
-            >
-              {l}
-            </a>
-          ))}
-        </nav>
+        {/* Suspense obrigatório em volta de useSearchParams (ver SeletorIdioma). */}
+        <Suspense fallback={<SeletorIdioma pathname={pathname ?? "/"} search={null} localeAtual={localeAtual} />}>
+          <SeletorIdiomaComQuery pathname={pathname ?? "/"} localeAtual={localeAtual} />
+        </Suspense>
         </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * TROCAR IDIOMA NÃO TROCA O PAÍS DE ENTREGA (15/10/2026, A1 da auditoria).
+ *
+ * O seletor montava o link só com o pathname: em `/checkout?pais=GB`, clicar
+ * em EN levava a `/en/checkout` e o Reino Unido virava Estados Unidos. O
+ * link agora carrega `?pais=` (e só ele — ver queryPreservadaNaTrocaDeIdioma
+ * em site.ts). `useSearchParams` exige um limite de Suspense; o fallback
+ * renderiza o mesmo seletor sem a query, e o cookie de país escolhido
+ * (middleware.ts) cobre esse instante.
+ */
+function SeletorIdiomaComQuery({ pathname, localeAtual }: { pathname: string; localeAtual: SiteLocale }) {
+  const searchParams = useSearchParams();
+  return <SeletorIdioma pathname={pathname} search={searchParams?.toString() ?? null} localeAtual={localeAtual} />;
+}
+
+function SeletorIdioma({ pathname, search, localeAtual }: { pathname: string; search: string | null; localeAtual: SiteLocale }) {
+  return (
+    <nav className="hidden items-center gap-1 md:flex" aria-label="Idioma">
+      {SITE_LOCALES.map((l) => (
+        // <a>, não <Link>: a troca de idioma precisa ser um carregamento
+        // de página inteiro — só ele grava o cookie (ver middleware.ts).
+        <a
+          key={l}
+          href={localeSwitchPath(pathname, l, search)}
+          className={`rounded px-2 py-1 text-xs font-semibold uppercase ${
+            l === localeAtual ? "bg-paper text-ink" : "text-paper/70 hover:text-gold"
+          }`}
+          hrefLang={l === "pt" ? "pt-BR" : l}
+        >
+          {l}
+        </a>
+      ))}
+    </nav>
   );
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { HEADER_HEIGHT_PX } from "@/lib/layout/header";
 import { createAdminClient } from "@/lib/supabase/server";
 import { confirmarPagamento } from "@/lib/payments/confirmar";
@@ -7,6 +8,7 @@ import { PayPalProvider } from "@/lib/payments/paypal-provider";
 import { consumirPurchaseParaNavegador } from "@/lib/tracking/purchase";
 import { formatarDinheiroParaComprador } from "@/lib/internacional/moeda";
 import { idiomaDoPais, localeDoPais } from "@/lib/internacional/paises";
+import { localeManualDosCookies } from "@/lib/i18n/site";
 import { LANG_HTML, textos } from "@/lib/internacional/idioma";
 import { daLinha, formatarEndereco, type LinhaEndereco } from "@/lib/internacional/endereco";
 import { PurchaseTracker } from "./PurchaseTracker";
@@ -166,14 +168,21 @@ export default async function PedidoPage({
   ]);
 
   /**
-   * A língua desta página é a do PAÍS DE ENTREGA do pedido, não a de quem
-   * abre o link. O mesmo link pode ser aberto pelo comprador em Miami e
-   * pela equipe em São José dos Campos — e ele precisa ser o mesmo
+   * A língua padrão desta página é a do PAÍS DE ENTREGA do pedido, não a de
+   * quem abre o link. O mesmo link pode ser aberto pelo comprador em Miami
+   * e pela equipe em São José dos Campos — e ele precisa ser o mesmo
    * documento nos dois lugares, senão "qual tela você está vendo?" vira
    * pergunta de suporte.
+   *
+   * Exceção (A4, 15/10/2026): quem ESCOLHEU idioma no seletor lê nessa
+   * língua também aqui, inclusive na volta do gateway — a preferência vive
+   * no cookie e não altera moeda, valores nem país do pedido. A equipe, sem
+   * esse cookie, continua vendo a língua do destino.
    */
   const paisDoPedido = (endereco?.country as string | undefined) ?? "BR";
-  const idioma = idiomaDoPais(paisDoPedido);
+  const cookieStore = await cookies();
+  const idioma =
+    localeManualDosCookies((nome) => cookieStore.get(nome)?.value) ?? idiomaDoPais(paisDoPedido);
   const t = textos(idioma);
   /**
    * Todo dinheiro desta página sai na MOEDA DO PEDIDO (bug pego no E2E de
