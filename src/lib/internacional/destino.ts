@@ -43,7 +43,7 @@ import {
 export const PAIS_ESCOLHIDO_COOKIE = "revera_pais_entrega";
 export const PAIS_ESCOLHIDO_MAX_AGE_S = 60 * 60 * 24;
 
-export type OrigemDoDestino = "explicito" | "escolhido" | "detectado" | "idioma" | "padrao";
+export type OrigemDoDestino = "explicito" | "escolhido" | "detectado" | "idioma" | "padrao" | "invalido";
 
 export interface DestinoResolvido {
   iso: string;
@@ -79,6 +79,16 @@ export function mercadoPadraoDoIdioma(locale: SiteLocale | null | undefined): st
   }
 }
 
+/**
+ * Código que aparece na tela de indisponibilidade quando `?pais=` veio com
+ * valor que a tabela não conhece: só letras e dígitos, curto, nunca o texto
+ * cru da URL.
+ */
+function codigoParaExibir(valor: string): string {
+  const limpo = valor.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  return limpo || "??";
+}
+
 export function resolverPaisDeEntrega(entrada: {
   explicito?: string | null;
   escolhido?: string | null;
@@ -87,6 +97,13 @@ export function resolverPaisDeEntrega(entrada: {
 }): DestinoResolvido {
   const explicito = paisConhecido(entrada.explicito);
   if (explicito) return { iso: explicito, origem: "explicito" };
+  // Parâmetro PRESENTE mas inválido não é o mesmo que ausente (Codex,
+  // 15/10/2026): `/checkout?pais=ZZ` não pode cair em silêncio no país da
+  // geolocalização nem no mercado do idioma. A tela diz "indisponível" e
+  // oferece as abas para escolher; nada é gravado em cookie.
+  if (typeof entrada.explicito === "string" && entrada.explicito.trim() !== "") {
+    return { iso: codigoParaExibir(entrada.explicito), origem: "invalido" };
+  }
   const escolhido = paisConhecido(entrada.escolhido);
   if (escolhido) return { iso: escolhido, origem: "escolhido" };
   const detectado = paisConhecido(entrada.detectado);
@@ -113,6 +130,7 @@ export function idiomaPadraoDoDestino(destino: DestinoResolvido, localeDaRota?: 
     case "detectado":
       return localeFromCountry(destino.iso);
     case "idioma":
+    case "invalido":
       return localeDaRota && isSiteLocale(localeDaRota) ? localeDaRota : DEFAULT_SITE_LOCALE;
     default:
       return DEFAULT_SITE_LOCALE;

@@ -16,7 +16,6 @@ import {
 import {
   PAIS_ESCOLHIDO_COOKIE,
   PAIS_ESCOLHIDO_MAX_AGE_S,
-  paisConhecido,
   resolverIdiomaDaJornada,
   resolverPaisDeEntrega,
   type DestinoResolvido,
@@ -119,7 +118,10 @@ function ehPreCarga(request: NextRequest): boolean {
  */
 function paisExplicitoNoCheckout(request: NextRequest): boolean {
   const { pathname, searchParams } = request.nextUrl;
-  return pathname === "/checkout" && paisConhecido(searchParams.get("pais")) !== null;
+  // Qualquer `?pais=` presente (válido ou não) fica com a página: um valor
+  // desconhecido vira tela de indisponibilidade, não redirect para outro
+  // mercado. Só o valor conhecido vira cookie (gravarPaisEscolhido).
+  return pathname === "/checkout" && (searchParams.get("pais") ?? "").trim() !== "";
 }
 
 function ehLeitura(request: NextRequest): boolean {

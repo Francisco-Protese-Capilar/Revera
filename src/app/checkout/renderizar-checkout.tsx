@@ -68,7 +68,18 @@ export async function renderCheckout({
 
   let conteudo: React.ReactNode;
 
-  if (pais === "BR") {
+  if (destino.origem === "invalido") {
+    // `?pais=` com valor desconhecido: indisponível, com as abas para
+    // escolher. Nunca substitui por geolocalização nem por mercado do idioma.
+    conteudo = (
+      <IndisponivelInternacional
+        pais={pais}
+        idioma={idioma}
+        localeDaRota={localeDaRota}
+        motivo={mensagemDeBloqueio("pais", idioma)}
+      />
+    );
+  } else if (pais === "BR") {
     const carrinho = await lerCarrinhoCompleto();
     const applePayDisponivel = await reveraApplePayDisponivel();
     conteudo = (
