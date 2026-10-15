@@ -23,13 +23,13 @@ export interface VarianteInternacional {
 }
 
 const COPY: Record<Exclude<SiteLocale, "pt">, {
-  eyebrow: string; choose: string; standard: string; selectError: string; addError: string; shipping: string;
+  priceFrom: string; eyebrow: string; choose: string; standard: string; selectError: string; addError: string; shipping: string;
   adding: string; add: string; added: string; checkout: string; payment: string; dhl: string; checked: string;
 }> = {
-  en: { eyebrow: "Revera hair system", choose: "Choose your color", standard: "Standard", selectError: "Choose your color before continuing.", addError: "We could not add this item. Please try again.", shipping: "Shipping is calculated live by DHL from your delivery address at checkout. Import duties and taxes, if charged, are paid by the recipient.", adding: "Adding…", add: "Add to cart", added: "Added to your cart.", checkout: "Continue to checkout", payment: "Secure international payment", dhl: "Tracked DHL shipping from Brazil", checked: "Color and item checked before dispatch" },
-  es: { eyebrow: "Prótesis capilar Reverá", choose: "Elige tu color", standard: "Estándar", selectError: "Elige el color antes de continuar.", addError: "No pudimos añadir este producto. Inténtalo de nuevo.", shipping: "El envío se calcula en vivo con DHL según tu dirección. Los aranceles e impuestos de importación, si se aplican, son responsabilidad del destinatario.", adding: "Añadiendo…", add: "Añadir al carrito", added: "Producto añadido al carrito.", checkout: "Continuar al pago", payment: "Pago internacional seguro", dhl: "Envío DHL rastreado desde Brasil", checked: "Color y producto revisados antes del envío" },
-  fr: { eyebrow: "Prothèse capillaire Reverá", choose: "Choisissez votre couleur", standard: "Standard", selectError: "Choisissez la couleur avant de continuer.", addError: "Impossible d’ajouter cet article. Réessayez.", shipping: "La livraison est calculée en direct par DHL selon votre adresse. Les droits et taxes d’importation éventuels restent à la charge du destinataire.", adding: "Ajout…", add: "Ajouter au panier", added: "Article ajouté au panier.", checkout: "Continuer vers le paiement", payment: "Paiement international sécurisé", dhl: "Livraison DHL suivie depuis le Brésil", checked: "Couleur et article vérifiés avant expédition" },
-  de: { eyebrow: "Reverá Haarsystem", choose: "Farbe auswählen", standard: "Standard", selectError: "Wählen Sie vor dem Fortfahren eine Farbe.", addError: "Der Artikel konnte nicht hinzugefügt werden. Versuchen Sie es erneut.", shipping: "Der Versand wird im Checkout anhand Ihrer Adresse live von DHL berechnet. Eventuelle Einfuhrabgaben und Steuern trägt der Empfänger.", adding: "Wird hinzugefügt…", add: "In den Warenkorb", added: "Zum Warenkorb hinzugefügt.", checkout: "Weiter zur Kasse", payment: "Sichere internationale Zahlung", dhl: "DHL-Versand mit Tracking aus Brasilien", checked: "Farbe und Artikel vor Versand geprüft" },
+  en: { priceFrom: "From", eyebrow: "Revera hair system", choose: "Choose your color", standard: "Standard", selectError: "Choose your color before continuing.", addError: "We could not add this item. Please try again.", shipping: "Shipping is calculated live by DHL from your delivery address at checkout. Import duties and taxes, if charged, are paid by the recipient.", adding: "Adding…", add: "Add to cart", added: "Added to your cart.", checkout: "Continue to checkout", payment: "Secure international payment", dhl: "Tracked DHL shipping from Brazil", checked: "Color and item checked before dispatch" },
+  es: { priceFrom: "Desde", eyebrow: "Prótesis capilar Reverá", choose: "Elige tu color", standard: "Estándar", selectError: "Elige el color antes de continuar.", addError: "No pudimos añadir este producto. Inténtalo de nuevo.", shipping: "El envío se calcula en vivo con DHL según tu dirección. Los aranceles e impuestos de importación, si se aplican, son responsabilidad del destinatario.", adding: "Añadiendo…", add: "Añadir al carrito", added: "Producto añadido al carrito.", checkout: "Continuar al pago", payment: "Pago internacional seguro", dhl: "Envío DHL rastreado desde Brasil", checked: "Color y producto revisados antes del envío" },
+  fr: { priceFrom: "À partir de", eyebrow: "Prothèse capillaire Reverá", choose: "Choisissez votre couleur", standard: "Standard", selectError: "Choisissez la couleur avant de continuer.", addError: "Impossible d’ajouter cet article. Réessayez.", shipping: "La livraison est calculée en direct par DHL selon votre adresse. Les droits et taxes d’importation éventuels restent à la charge du destinataire.", adding: "Ajout…", add: "Ajouter au panier", added: "Article ajouté au panier.", checkout: "Continuer vers le paiement", payment: "Paiement international sécurisé", dhl: "Livraison DHL suivie depuis le Brésil", checked: "Couleur et article vérifiés avant expédition" },
+  de: { priceFrom: "Ab", eyebrow: "Reverá Haarsystem", choose: "Farbe auswählen", standard: "Standard", selectError: "Wählen Sie vor dem Fortfahren eine Farbe.", addError: "Der Artikel konnte nicht hinzugefügt werden. Versuchen Sie es erneut.", shipping: "Der Versand wird im Checkout anhand Ihrer Adresse live von DHL berechnet. Eventuelle Einfuhrabgaben und Steuern trägt der Empfänger.", adding: "Wird hinzugefügt…", add: "In den Warenkorb", added: "Zum Warenkorb hinzugefügt.", checkout: "Weiter zur Kasse", payment: "Sichere internationale Zahlung", dhl: "DHL-Versand mit Tracking aus Brasilien", checked: "Farbe und Artikel vor Versand geprüft" },
 };
 
 export function ProdutoInternacional({
@@ -60,6 +60,19 @@ export function ProdutoInternacional({
     () => variants.find((variant) => variant.id === selectedId) ?? null,
     [selectedId, variants]
   );
+  // O preço precisa aparecer ANTES de a pessoa escolher a cor (15/10/2026:
+  // a página em inglês mostrava só nome, cores e "Add to cart", sem valor).
+  // Sem cor escolhida mostra o menor preço do modelo; se os preços das cores
+  // diferem, com o prefixo "a partir de".
+  const menorPrecoCents = useMemo(
+    () => (variants.length ? Math.min(...variants.map((variant) => variant.priceCents)) : null),
+    [variants]
+  );
+  const precosIguais = useMemo(
+    () => variants.every((variant) => variant.priceCents === menorPrecoCents),
+    [variants, menorPrecoCents]
+  );
+  const precoExibidoCents = selected ? selected.priceCents : menorPrecoCents;
 
   useEffect(() => {
     if (viewed.current || variants.length === 0) return;
@@ -119,6 +132,20 @@ export function ProdutoInternacional({
             </p>
           </div>
 
+          {precoExibidoCents !== null ? (
+            <div className="rounded-xl border border-sand p-4" data-testid="preco-internacional">
+              <p className="font-display text-3xl font-semibold text-ink">
+                {!selected && !precosIguais ? (
+                  <span className="mr-2 text-base font-normal text-ink/60">{copy.priceFrom}</span>
+                ) : null}
+                {formatarDinheiroParaComprador(precoExibidoCents, currency, moneyLocale)}
+              </p>
+              <p className="mt-1 text-xs text-ink/60">
+                {copy.shipping}
+              </p>
+            </div>
+          ) : null}
+
           <div>
             <h2 className="text-sm font-semibold text-ink">{copy.choose}</h2>
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -144,16 +171,6 @@ export function ProdutoInternacional({
             </div>
           </div>
 
-          {selected ? (
-            <div className="rounded-xl border border-sand p-4">
-              <p className="font-display text-3xl font-semibold text-ink">
-                {formatarDinheiroParaComprador(selected.priceCents, currency, moneyLocale)}
-              </p>
-              <p className="mt-1 text-xs text-ink/60">
-                {copy.shipping}
-              </p>
-            </div>
-          ) : null}
 
           <div className="flex items-center gap-4">
             <QuantitySelector value={quantity} onChange={setQuantity} max={selected?.stockQty} />

@@ -79,6 +79,12 @@ export function CheckoutForm({
   const [campos, setCampos] = useState<FormState>(ESTADO_INICIAL);
   const [erros, setErros] = useState<Record<string, string>>({});
   const [erroGeral, setErroGeral] = useState<string | null>(null);
+  // O "Finalizar pedido" fica no fim da página. Um erro mostrado só no topo
+  // (Toast) não é visto por quem acabou de clicar lá embaixo: a tela parece
+  // ter ignorado o clique e a pessoa desiste (visto em 15/10/2026 com a
+  // falha de frete). O erro agora também aparece junto do botão e a página
+  // rola até ele.
+  const erroJuntoDoBotaoRef = useRef<HTMLDivElement | null>(null);
   const [suporteFreteHref, setSuporteFreteHref] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
@@ -333,25 +339,14 @@ export function CheckoutForm({
     }
   }
 
+  useEffect(() => {
+    if (!erroGeral) return;
+    erroJuntoDoBotaoRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [erroGeral]);
+
   return (
     <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-8 pb-16" noValidate>
       {erroGeral ? <Toast message={erroGeral} variant="error" onClose={() => setErroGeral(null)} /> : null}
-      {suporteFreteHref ? (
-        <div className="rounded-xl border border-gold/45 bg-gold/10 p-4 text-sm text-ink shadow-sm">
-          <p className="font-semibold">A equipe pode confirmar esse frete manualmente.</p>
-          <p className="mt-1 text-ink/70">
-            O link ja leva o CEP e os itens da sacola para agilizar o atendimento.
-          </p>
-          <a
-            href={suporteFreteHref}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-flex min-h-toque items-center justify-center rounded-xl bg-gold-metal px-4 py-3 font-semibold text-ink shadow-[0_8px_20px_-10px_rgb(var(--gold-rgb)_/_0.9)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-glow-gold"
-          >
-            Falar no WhatsApp
-          </a>
-        </div>
-      ) : null}
 
       <section className="flex flex-col gap-4">
         <h2 className="font-display text-xl text-ink">Seus dados</h2>
@@ -653,6 +648,32 @@ export function CheckoutForm({
         <p className="-mt-2 text-sm text-ink/70" role="status">
           {avisoFrete}
         </p>
+      ) : null}
+
+      {erroGeral ? (
+        <div
+          ref={erroJuntoDoBotaoRef}
+          role="alert"
+          className="rounded-xl border border-red-700/40 bg-red-700/5 p-4 text-sm text-ink shadow-sm"
+        >
+          <p className="font-semibold text-red-800">{erroGeral}</p>
+          {suporteFreteHref ? (
+            <>
+              <p className="mt-2 text-ink/70">
+                A equipe pode confirmar esse frete manualmente. O link ja leva o CEP e os
+                itens da sacola para agilizar o atendimento.
+              </p>
+              <a
+                href={suporteFreteHref}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex min-h-toque items-center justify-center rounded-xl bg-gold-metal px-4 py-3 font-semibold text-ink shadow-[0_8px_20px_-10px_rgb(var(--gold-rgb)_/_0.9)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-glow-gold"
+              >
+                Falar no WhatsApp
+              </a>
+            </>
+          ) : null}
+        </div>
       ) : null}
 
       {/* A cotação no navegador é só informativa. O frete real é recalculado
