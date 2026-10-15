@@ -589,6 +589,38 @@ describe("A2 — mercadoDaVitrine e página de produto localizada", () => {
     expect(await mercadoDaVitrine("pt")).toMatchObject({ nacional: true, regra: { moedaPadrao: "BRL" } });
   });
 
+  it("sem cookie e sem query, vitrine e checkout resolvem o MESMO destino pelo país detectado, por qualquer das três fontes", async () => {
+    const { mercadoDaVitrine } = await import("@/lib/internacional/destino-server");
+    const { renderCheckout } = await import("@/app/checkout/renderizar-checkout");
+    const { CheckoutInternacionalForm } = await import("@/app/checkout/CheckoutInternacionalForm");
+    const { CheckoutForm } = await import("@/app/checkout/CheckoutForm");
+    const fontes = [
+      (iso: string) => ({ headers: { [GEO_COUNTRY_HEADER]: iso }, cookies: {} }),
+      (iso: string) => ({ headers: { "x-vercel-ip-country": iso }, cookies: {} }),
+      (iso: string) => ({ headers: {}, cookies: { ["revera_country"]: iso } }),
+    ];
+    for (const { pais, moeda } of MATRIZ) {
+      for (const fonte of fontes) {
+        const { headers, cookies } = fonte(pais);
+        estado.headers = headers;
+        estado.cookies = cookies;
+        const locale: SiteLocale = pais === "BR" ? "pt" : "en";
+        const vitrine = await mercadoDaVitrine(locale);
+        expect(vitrine.regra.iso, `${pais} vitrine`).toBe(pais);
+        expect(vitrine.regra.moedaPadrao, `${pais} vitrine`).toBe(moeda);
+        expect(vitrine.aberto).toBe(true);
+        const arvore = await renderCheckout({ localeDaRota: locale === "pt" ? null : locale, paisExplicito: undefined });
+        if (pais === "BR") {
+          expect(encontrar(arvore, (el) => el.type === CheckoutForm), `${pais} checkout`).not.toBeNull();
+        } else {
+          const resumo = encontrar(arvore, (el) => el.type === CheckoutInternacionalForm)!.props.resumo as { pais: { iso: string }; moeda: string };
+          expect(resumo.pais.iso, `${pais} checkout`).toBe(pais);
+          expect(resumo.moeda, `${pais} checkout`).toBe(moeda);
+        }
+      }
+    }
+  });
+
   it("?pais= na URL da vitrine vence cookie e geolocalização; inválido fica fechado", async () => {
     const { mercadoDaVitrine } = await import("@/lib/internacional/destino-server");
     estado.cookies = { [PAIS_ESCOLHIDO_COOKIE]: "US" };
