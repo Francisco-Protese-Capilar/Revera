@@ -63,7 +63,7 @@ const STAGING_SOBRE_PREVIEW = {
   NEXT_PUBLIC_SUPABASE_URL: `https://${REF_STAGING}.supabase.co`,
 };
 
-const REF_PRODUCAO = "ngnaemfiytutyplolgxb";
+const REF_PRODUCAO = "bdqtpleyniwuqrjnhzyy";
 const URL_PRODUCAO = `https://${REF_PRODUCAO}.supabase.co`;
 
 /** Chave no formato JWT do Supabase, com o `ref` do projeto no payload. */
@@ -86,7 +86,7 @@ describe("Preview da Vercel: staging declarado, nunca produção copiada", () =>
       NODE_ENV: "production",
       REVERA_PAYMENT_PROVIDER: "infinitepay",
       INFINITEPAY_HANDLE: "loja",
-      NEXT_PUBLIC_SUPABASE_URL: "https://ngnaemfiytutyplolgxb.supabase.co",
+      NEXT_PUBLIC_SUPABASE_URL: "https://bdqtpleyniwuqrjnhzyy.supabase.co",
     });
     expect(r.codigo).toBe(1);
     expect(r.saida).toContain("Preview sem APP_ENV=staging");

@@ -189,9 +189,9 @@ it("links Stripe recusam domínio parecido, protocolo perigoso e credenciais",()
 });
 
 it("o banco escrito precisa pertencer à mesma produção validada",()=>{
-  const api="https://ngnaemfiytutyplolgxb.supabase.co";
-  expect(destinoReveraValido(api,"postgresql://postgres:fixture@db.ngnaemfiytutyplolgxb.supabase.co/postgres")).toBe(true);
-  expect(destinoReveraValido(api,"postgresql://postgres.ngnaemfiytutyplolgxb:fixture@aws-0-sa-east-1.pooler.supabase.com/postgres")).toBe(true);
+  const api="https://bdqtpleyniwuqrjnhzyy.supabase.co";
+  expect(destinoReveraValido(api,"postgresql://postgres:fixture@db.bdqtpleyniwuqrjnhzyy.supabase.co/postgres")).toBe(true);
+  expect(destinoReveraValido(api,"postgresql://postgres.bdqtpleyniwuqrjnhzyy:fixture@aws-1-sa-east-1.pooler.supabase.com/postgres")).toBe(true);
   expect(destinoReveraValido(api,"postgresql://postgres.other:fixture@aws-0-sa-east-1.pooler.supabase.com/postgres")).toBe(false);
   expect(destinoReveraValido(api,"postgresql://postgres:fixture@db.other.supabase.co/postgres")).toBe(false);
 });

@@ -56,7 +56,7 @@ function baseAsaasDeProducao(valor) {
 }
 
 /** Project ref do Supabase de PRODUÇÃO. Público: é o subdomínio da URL. */
-const SUPABASE_REF_PRODUCAO = "ngnaemfiytutyplolgxb";
+const SUPABASE_REF_PRODUCAO = "bdqtpleyniwuqrjnhzyy"; // sa-east-1 desde 15/10/2026 (antes: ngnaemfiytutyplolgxb, us-west-2)
 
 /**
  * Projetos Supabase em que staging PODE gravar (REVERA-STAGING). Lista

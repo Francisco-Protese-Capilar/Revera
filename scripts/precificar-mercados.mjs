@@ -5,7 +5,7 @@ import pg from 'pg';
 
 export function destinoReveraValido(supabaseUrl, databaseUrl) {
   try {
-    const ref = 'ngnaemfiytutyplolgxb';
+    const ref = 'bdqtpleyniwuqrjnhzyy';
     const api = new URL(supabaseUrl), db = new URL(databaseUrl);
     return api.protocol === 'https:' && api.hostname === `${ref}.supabase.co` &&
       ['postgres:','postgresql:'].includes(db.protocol) && db.pathname === '/postgres' &&
