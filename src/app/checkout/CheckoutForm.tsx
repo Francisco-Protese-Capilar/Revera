@@ -12,6 +12,9 @@ import { formatarCPF } from "@/lib/format/cpf";
 import { criarPedidoAction } from "./actions";
 import type { CheckoutInput } from "./schema";
 import type { CartView } from "@/lib/cart/types";
+import type { Idioma } from "@/lib/internacional/idioma";
+import { textosNacional } from "./textos-nacional";
+import { formatarDinheiroParaComprador } from "@/lib/internacional/moeda";
 
 const inputClass = "min-h-toque rounded-md border border-sand bg-paper px-3 py-2 text-ink";
 const FRETE_TIMEOUT_MS = 12_000;
@@ -69,10 +72,14 @@ interface RespostaViaCep {
 export function CheckoutForm({
   carrinhoInicial,
   applePayDisponivel,
+  idioma = "pt",
 }: {
   carrinhoInicial?: CartView;
   applePayDisponivel?: boolean;
+  /** Idioma da tela (item 1, 15/10/2026). Português é o texto de sempre. */
+  idioma?: Idioma;
 }) {
+  const t = textosNacional(idioma);
   const { cart, carregando } = useCart();
   const cartCheckout = carregando && carrinhoInicial ? carrinhoInicial : cart;
   const [campos, setCampos] = useState<FormState>(ESTADO_INICIAL);
@@ -192,14 +199,14 @@ export function CheckoutForm({
       const resposta = await fetch(`https://viacep.com.br/ws/${digitos}/json/`);
       if (!resposta.ok) {
         limparEnderecoBuscado();
-        setAvisoCep("Não foi possível consultar o CEP agora — preencha o endereço manualmente.");
+        setAvisoCep(t.cepIndisponivel);
         return;
       }
 
       const dados = (await resposta.json()) as RespostaViaCep;
       if (dados.erro) {
         limparEnderecoBuscado();
-        setAvisoCep("CEP não encontrado — confira o número ou preencha o endereço manualmente.");
+        setAvisoCep(t.cepNaoEncontrado);
         return;
       }
 
@@ -268,11 +275,7 @@ export function CheckoutForm({
       if (!r.ok || !dados.disponivel || typeof dados.priceCents !== "number") {
         ultimoCepCotado.current = "";
         setFrete(null);
-        setAvisoFrete(
-          "Não conseguimos mostrar o frete agora. Vamos tentar recalcular com " +
-            "segurança antes do pagamento; se continuar indisponível, você será " +
-            "encaminhado para atendimento sem cobrança."
-        );
+        setAvisoFrete(t.freteIndisponivel);
         return;
       }
 
@@ -285,11 +288,7 @@ export function CheckoutForm({
       if (!souAtual()) return;
       ultimoCepCotado.current = "";
       setFrete(null);
-      setAvisoFrete(
-        "Não conseguimos mostrar o frete agora. Vamos tentar recalcular com " +
-          "segurança antes do pagamento; se continuar indisponível, você será " +
-          "encaminhado para atendimento sem cobrança."
-      );
+      setAvisoFrete(t.freteIndisponivel);
     } finally {
       window.clearTimeout(timeout);
       if (souAtual()) setCotandoFrete(false);
@@ -328,7 +327,7 @@ export function CheckoutForm({
 
     if (cartCheckout.items.length === 0) {
       enviandoRef.current = false;
-      setErroGeral("Sua sacola está vazia — volte e adicione algo antes de finalizar.");
+      setErroGeral(t.sacolaVazia);
       return;
     }
 
@@ -353,6 +352,7 @@ export function CheckoutForm({
         // carregaram com folga.
         atribuicao: lerAtribuicao(),
         trackingConsent,
+        idioma,
       };
       resultado = await criarPedidoAction(payload);
     } catch {
@@ -363,7 +363,7 @@ export function CheckoutForm({
       // navegação é inofensivo (a página está saindo).
       setEnviando(false);
       enviandoRef.current = false;
-      setErroGeral("Não conseguimos enviar o pedido agora. Confira sua conexão e tente de novo; nada foi cobrado.");
+      setErroGeral(t.falhaEnvio);
       return;
     }
     setEnviando(false);
@@ -397,9 +397,9 @@ export function CheckoutForm({
           repetiria o anúncio para leitores de tela. */}
 
       <section className="flex flex-col gap-4">
-        <h2 className="font-display text-xl text-ink">Seus dados</h2>
+        <h2 className="font-display text-xl text-ink">{t.seusDados}</h2>
 
-        <FormField label="Nome completo" error={erros.name}>
+        <FormField label={t.nome} error={erros.name}>
           {(props) => (
             <input
               {...props}
@@ -413,7 +413,7 @@ export function CheckoutForm({
         </FormField>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="E-mail" error={erros.email}>
+          <FormField label={t.email} error={erros.email}>
             {(props) => (
               <input
                 {...props}
@@ -427,7 +427,7 @@ export function CheckoutForm({
             )}
           </FormField>
 
-          <FormField label="Telefone" hint="Com DDD, para contato sobre o envio." error={erros.phone}>
+          <FormField label={t.telefone} hint={t.telefoneHint} error={erros.phone}>
             {(props) => (
               <input
                 {...props}
@@ -442,7 +442,7 @@ export function CheckoutForm({
           </FormField>
         </div>
 
-        <FormField label="CPF" error={erros.cpf}>
+        <FormField label={t.cpf} error={erros.cpf}>
           {(props) => (
             <input
               {...props}
@@ -458,17 +458,17 @@ export function CheckoutForm({
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="font-display text-xl text-ink">Endereço de entrega</h2>
+        <h2 className="font-display text-xl text-ink">{t.enderecoEntrega}</h2>
 
         <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
           <FormField
-            label="CEP"
+            label={t.cep}
             hint={
               buscandoCep
-                ? "Buscando endereço…"
+                ? t.cepBuscando
                 : cotandoFrete
-                  ? "Calculando o frete…"
-                  : avisoCep ?? "Preenche rua, bairro, cidade e UF — e calcula o frete."
+                  ? t.cepCalculando
+                  : avisoCep ?? t.cepHint
             }
             error={erros.cep}
           >
@@ -497,12 +497,12 @@ export function CheckoutForm({
               void cotarFrete(campos.cep);
             }}
           >
-            {cotandoFrete ? "Calculando…" : "Calcular frete"}
+            {cotandoFrete ? t.calculando : t.calcularFrete}
           </Button>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
-          <FormField label="Rua" error={erros.street}>
+          <FormField label={t.rua} error={erros.street}>
             {(props) => (
               <input
                 {...props}
@@ -515,7 +515,7 @@ export function CheckoutForm({
             )}
           </FormField>
 
-          <FormField label="Número" error={erros.number}>
+          <FormField label={t.numero} error={erros.number}>
             {(props) => (
               <input
                 {...props}
@@ -528,7 +528,7 @@ export function CheckoutForm({
           </FormField>
         </div>
 
-        <FormField label="Complemento" hint="Opcional." error={erros.complement}>
+        <FormField label={t.complemento} hint={t.opcional} error={erros.complement}>
           {(props) => (
             <input
               {...props}
@@ -541,7 +541,7 @@ export function CheckoutForm({
         </FormField>
 
         <div className="grid gap-4 sm:grid-cols-[1fr_1fr_80px]">
-          <FormField label="Bairro" error={erros.neighborhood}>
+          <FormField label={t.bairro} error={erros.neighborhood}>
             {(props) => (
               <input
                 {...props}
@@ -553,7 +553,7 @@ export function CheckoutForm({
             )}
           </FormField>
 
-          <FormField label="Cidade" error={erros.city}>
+          <FormField label={t.cidade} error={erros.city}>
             {(props) => (
               <input
                 {...props}
@@ -566,7 +566,7 @@ export function CheckoutForm({
             )}
           </FormField>
 
-          <FormField label="UF" error={erros.state}>
+          <FormField label={t.uf} error={erros.state}>
             {(props) => (
               <input
                 {...props}
@@ -583,7 +583,7 @@ export function CheckoutForm({
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-xl text-ink">Forma de pagamento</h2>
+        <h2 className="font-display text-xl text-ink">{t.formaPagamento}</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex min-h-toque cursor-pointer items-start gap-3 rounded-xl border border-sand bg-paper p-4 text-sm text-ink shadow-sm transition hover:border-gold">
             <input
@@ -594,8 +594,8 @@ export function CheckoutForm({
               onChange={() => setPaymentPreference("default")}
             />
             <span>
-              <strong className="block">Pix ou cartão</strong>
-              <span className="mt-1 block text-ink/65">Opções nacionais no checkout seguro.</span>
+              <strong className="block">{t.pixOuCartao}</strong>
+              <span className="mt-1 block text-ink/65">{t.pixOuCartaoTexto}</span>
             </span>
           </label>
           {applePayDisponivel ? (
@@ -608,9 +608,9 @@ export function CheckoutForm({
                 onChange={() => setPaymentPreference("apple_pay")}
               />
               <span>
-                <strong className="block">Apple Pay, Google Pay ou cartão pela Stripe</strong>
+                <strong className="block">{t.carteiras}</strong>
                 <span className="mt-1 block text-ink/65">
-                  A carteira disponível aparece em dispositivos compatíveis; cartão fica como alternativa.
+                  {t.carteirasTexto}
                 </span>
               </span>
             </label>
@@ -627,7 +627,7 @@ export function CheckoutForm({
           (cartCheckout.items), sem recalcular nada. Para mudar quantidade ou remover,
           a pessoa volta à sacola. */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-lg text-ink">Seu pedido</h2>
+        <h2 className="font-display text-lg text-ink">{t.seuPedido}</h2>
         <ul className="flex flex-col divide-y divide-sand rounded-lg border border-sand">
           {cartCheckout.items.map((item) => (
             <li key={item.cartItemId} className="flex items-center gap-3 p-3">
@@ -649,17 +649,11 @@ export function CheckoutForm({
                 ) : null}
                 <span className="text-xs text-ink/50">
                   {item.quantity} ×{" "}
-                  {(item.unitPriceCents / 100).toLocaleString("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  })}
+                  {formatarDinheiroParaComprador(item.unitPriceCents, "BRL", idioma === "pt" ? "pt-BR" : idioma)}
                 </span>
               </span>
               <span className="shrink-0 text-sm font-semibold text-ink tabular-nums">
-                {(item.subtotalCents / 100).toLocaleString("pt-BR", {
-                  style: "currency",
-                  currency: "BRL",
-                })}
+                {formatarDinheiroParaComprador(item.subtotalCents, "BRL", idioma === "pt" ? "pt-BR" : idioma)}
               </span>
             </li>
           ))}
@@ -668,7 +662,7 @@ export function CheckoutForm({
           href="/carrinho"
           className="self-start text-sm text-ink underline decoration-gold decoration-2 underline-offset-4"
         >
-          Alterar a sacola
+          {t.alterarSacola}
         </a>
       </section>
 
@@ -680,15 +674,15 @@ export function CheckoutForm({
         discountCents={cartCheckout.discountCents}
         shippingCents={frete?.priceCents ?? null}
         totalCents={cartCheckout.totalCents + (frete?.priceCents ?? 0)}
-        shippingHint={cotandoFrete ? "calculando…" : "preencha o CEP acima"}
+        shippingHint={cotandoFrete ? t.freteCalculando : t.fretePreenchaCep}
+        rotulos={{ subtotal: t.resumoSubtotal, desconto: t.resumoDesconto, frete: t.resumoFrete, total: t.resumoTotal }}
+        moneyLocale={idioma === "pt" ? "pt-BR" : idioma}
       />
 
       {frete ? (
         <p className="-mt-2 text-sm text-ink/60">
           {frete.serviceName}
-          {frete.etaDays > 0
-            ? ` — chega em cerca de ${frete.etaDays} ${frete.etaDays === 1 ? "dia útil" : "dias úteis"} após a postagem.`
-            : "."}
+          {frete.etaDays > 0 ? t.prazo(frete.etaDays) : "."}
         </p>
       ) : null}
 
@@ -708,8 +702,7 @@ export function CheckoutForm({
           {suporteFreteHref ? (
             <>
               <p className="mt-2 text-ink/70">
-                A equipe pode confirmar esse frete manualmente. O link ja leva o CEP e os
-                itens da sacola para agilizar o atendimento.
+                {t.ajudaFrete}
               </p>
               <a
                 href={suporteFreteHref}
@@ -717,7 +710,7 @@ export function CheckoutForm({
                 rel="noreferrer"
                 className="mt-3 inline-flex min-h-toque items-center justify-center rounded-xl bg-gold-metal px-4 py-3 font-semibold text-ink shadow-[0_8px_20px_-10px_rgb(var(--gold-rgb)_/_0.9)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-glow-gold"
               >
-                Falar no WhatsApp
+                {t.falarWhatsApp}
               </a>
             </>
           ) : null}
@@ -735,12 +728,12 @@ export function CheckoutForm({
         disabled={enviando || cartCheckout.items.length === 0 || cotandoFrete}
       >
         {enviando
-          ? "Enviando…"
+          ? t.enviando
           : cartCheckout.items.length === 0
-            ? "Sua sacola está vazia"
+            ? t.sacolaVaziaBotao
             : cotandoFrete
-            ? "Calculando frete…"
-            : "Finalizar pedido"}
+            ? t.calculandoFreteBotao
+            : t.finalizar}
       </Button>
     </form>
   );

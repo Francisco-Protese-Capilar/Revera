@@ -11,7 +11,7 @@ import { urlDoWebhook } from "@/lib/payments/webhook-url";
 import { baseUrl } from "@/lib/config/urls";
 import { idiomaDoPais } from "@/lib/internacional/paises";
 import { LANG_HTML, type Idioma } from "@/lib/internacional/idioma";
-import { localeManualDosCookies } from "@/lib/i18n/site";
+import { localeManualDosCookies, normalizeSiteLocale } from "@/lib/i18n/site";
 import {
   SUPORTE_POR_MOTIVO,
   textosPagamentoIndisponivel,
@@ -79,7 +79,7 @@ export default async function PagamentoPage({
   const { data: pedido } = await supabase
     .from("orders")
     .select(
-      "id, order_number, status, payment_status, total_cents, shipping_cents, discount_cents, currency, payment_preference, access_token, customer_id, address_id, intl_shipping_quote_id, shipping_quote_id"
+      "id, order_number, status, payment_status, total_cents, shipping_cents, discount_cents, currency, payment_preference, access_token, customer_id, address_id, intl_shipping_quote_id, shipping_quote_id, locale"
     )
     .eq("access_token", accessToken)
     .maybeSingle();
@@ -124,7 +124,10 @@ export default async function PagamentoPage({
    * pedido. O idioma não muda moeda, valor nem país — são os do pedido.
    */
   const cookieStore = await cookies();
-  const idiomaManual = localeManualDosCookies((nome) => cookieStore.get(nome)?.value);
+  // O idioma gravado no pedido vence o cookie (item 2, 15/10/2026).
+  const idiomaManual =
+    normalizeSiteLocale(pedido.locale as string | null) ??
+    localeManualDosCookies((nome) => cookieStore.get(nome)?.value);
   let idiomaPagamento: Idioma = idiomaManual ?? idiomaDoPais("BR");
   let expiraEmCotacaoInternacional: Date | undefined;
   let cotadaEmInternacional: Date | undefined;

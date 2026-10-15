@@ -28,9 +28,9 @@ describe("checkout nacional — erro junto do botão (15/10/2026)", () => {
 
   it("o link do WhatsApp do frete fica dentro do bloco de erro, não no topo", () => {
     const posBloco = checkout.indexOf('ref={erroJuntoDoBotaoRef}');
-    const posWhats = checkout.indexOf("Falar no WhatsApp");
+    const posWhats = checkout.indexOf("{t.falarWhatsApp}");
     expect(posWhats).toBeGreaterThan(posBloco);
-    expect(checkout.split("Falar no WhatsApp").length).toBe(2);
+    expect(checkout.split("{t.falarWhatsApp}").length).toBe(2);
   });
 });
 

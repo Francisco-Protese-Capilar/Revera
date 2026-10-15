@@ -7,7 +7,7 @@ export default async function RecuperacaoInternacionalPage() {
   const cutoffAbandono = new Date(Date.now() - 60 * 60_000).toISOString();
   const { data, error } = await supabase
     .from("orders")
-    .select("id, order_number, created_at, currency, total_cents, payment_status, canceled_at, customers(full_name,email,phone,country), payment_journey_events(created_at)")
+    .select("id, order_number, created_at, currency, total_cents, payment_status, canceled_at, locale, customers(full_name,email,phone,country), payment_journey_events(created_at)")
     .neq("currency", "BRL")
     .is("canceled_at", null)
     .order("created_at", { ascending: false });
@@ -29,6 +29,7 @@ export default async function RecuperacaoInternacionalPage() {
       totalCents: row.total_cents,
       paymentStatus: row.payment_status,
       country: customer.country,
+      locale: (row.locale as string | null) ?? null,
       customer: { name: customer.full_name, email: customer.email ?? null, phone: customer.phone ?? null },
     }];
   });

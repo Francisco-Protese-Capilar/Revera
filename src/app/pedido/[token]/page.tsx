@@ -8,7 +8,7 @@ import { PayPalProvider } from "@/lib/payments/paypal-provider";
 import { consumirPurchaseParaNavegador } from "@/lib/tracking/purchase";
 import { formatarDinheiroParaComprador } from "@/lib/internacional/moeda";
 import { idiomaDoPais, localeDoPais } from "@/lib/internacional/paises";
-import { localeManualDosCookies } from "@/lib/i18n/site";
+import { localeManualDosCookies, normalizeSiteLocale } from "@/lib/i18n/site";
 import { LANG_HTML, textos } from "@/lib/internacional/idioma";
 import { daLinha, formatarEndereco, type LinhaEndereco } from "@/lib/internacional/endereco";
 import { PurchaseTracker } from "./PurchaseTracker";
@@ -81,7 +81,7 @@ export default async function PedidoPage({
   const { data: pedido } = await supabase
     .from("orders")
     .select(
-      "id, order_number, status, payment_status, subtotal_cents, discount_cents, shipping_cents, total_cents, currency, created_at, address_id"
+      "id, order_number, status, payment_status, subtotal_cents, discount_cents, shipping_cents, total_cents, currency, created_at, address_id, locale"
     )
     .eq("access_token", token)
     .maybeSingle();
@@ -181,8 +181,12 @@ export default async function PedidoPage({
    */
   const paisDoPedido = (endereco?.country as string | undefined) ?? "BR";
   const cookieStore = await cookies();
+  // Precedência: idioma gravado no pedido (sobrevive sem cookie) → escolha
+  // manual no cookie → idioma do país de entrega.
   const idioma =
-    localeManualDosCookies((nome) => cookieStore.get(nome)?.value) ?? idiomaDoPais(paisDoPedido);
+    normalizeSiteLocale(pedido.locale as string | null) ??
+    localeManualDosCookies((nome) => cookieStore.get(nome)?.value) ??
+    idiomaDoPais(paisDoPedido);
   const t = textos(idioma);
   /**
    * Todo dinheiro desta página sai na MOEDA DO PEDIDO (bug pego no E2E de

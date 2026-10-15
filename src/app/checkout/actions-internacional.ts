@@ -625,6 +625,8 @@ export async function criarPedidoInternacionalAction(
       customer_id: customerId,
       address_id: addressId,
       currency: mercado.moeda,
+      // Idioma da tela em que o pedido nasceu (item 2, 15/10/2026).
+      locale: idioma,
       subtotal_cents: subtotalCents,
       discount_cents: 0,
       shipping_cents: shippingCents,

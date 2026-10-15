@@ -65,7 +65,22 @@ Consequências visíveis:
 - Reservas, idempotência e bloqueio de nova cobrança no pagamento.
 - A home em português (`/`) não mostra preço por destino; catálogo e produto
   mostram.
-- O formulário nacional (CEP/UF/CPF) continua em português; só a casca da
-  página de checkout é traduzida quando o Brasil é lido em outra língua.
-- E-mails e notificações continuam na língua do país de entrega: a preferência
-  manual não é persistida no pedido (sem migração nesta correção).
+
+## Complementos do mesmo dia
+
+- **Formulário nacional traduzido** (`src/app/checkout/textos-nacional.ts`):
+  CEP/UF/CPF, Pix/cartão, resumo e mensagens de erro do servidor nas cinco
+  línguas quando o Brasil é lido em outro idioma. O português é o texto de
+  sempre, byte a byte; as regras de validação não mudam com a língua.
+- **Idioma gravado no pedido** (`orders.locale`, migração
+  `00000000000045_order_locale.sql`, aplicada em staging em 15/10/2026 e em
+  produção antes do deploy correspondente): páginas do pedido e do pagamento,
+  e-mail de confirmação e recuperação internacional preferem o idioma do
+  pedido; sem ele, cookie manual e depois o idioma do país. Nulo em pedidos
+  antigos.
+- **Preview da Vercel**: as variáveis de staging do cofre `revera stg` foram
+  instaladas no ambiente Preview do projeto `revera` sem escopo de branch
+  (antes só existiam presas a três branches antigos), para o deploy de
+  Preview de qualquer PR subir como staging declarado.
+- **Checkout hospedado da Stripe** aberto em sandbox nas cinco línguas com a
+  chave de teste; PayPal sandbox continua pendente por falta de credencial.

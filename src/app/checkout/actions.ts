@@ -57,7 +57,10 @@ import { cotarFrete } from "@/lib/shipping/cotar";
 import { avisarPedidoPendentePorEmail } from "@/lib/notificacoes/email-operacional";
 import { reveraApplePayDisponivel } from "@/lib/payments/revera";
 import { linkWhatsApp } from "@/lib/config/whatsapp";
-import { checkoutSchema } from "./schema";
+import { schemaNacionalDoIdioma } from "./schema";
+import { textosNacional } from "./textos-nacional";
+import { isSiteLocale } from "@/lib/i18n/site";
+import type { Idioma } from "@/lib/internacional/idioma";
 
 export interface CheckoutResult {
   erro?: string;
@@ -108,8 +111,16 @@ function linkAjudaFrete(input: {
   );
 }
 
+/** Idioma da tela, lido do payload cru só para a língua das mensagens. */
+function idiomaDoPayload(input: unknown): Idioma {
+  const bruto = typeof input === "object" && input !== null ? (input as { idioma?: unknown }).idioma : null;
+  return typeof bruto === "string" && isSiteLocale(bruto) ? bruto : "pt";
+}
+
 export async function criarPedidoAction(input: unknown): Promise<CheckoutResult> {
-  const parsed = checkoutSchema.safeParse(input);
+  const idioma = idiomaDoPayload(input);
+  const t = textosNacional(idioma);
+  const parsed = schemaNacionalDoIdioma(idioma).safeParse(input);
   if (!parsed.success) {
     const camposComErro: Record<string, string> = {};
     for (const issue of parsed.error.issues) {
@@ -118,7 +129,7 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
         camposComErro[campo] = issue.message;
       }
     }
-    return { erro: "Confira os dados marcados acima.", camposComErro };
+    return { erro: t.confiraCampos, camposComErro };
   }
   const dados = parsed.data;
 
@@ -127,7 +138,7 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
   // checkout). Ver src/lib/cart/store.ts.
   const carrinho = await lerCarrinhoCompleto();
   if (!carrinho.cartId || carrinho.items.length === 0) {
-    return { erro: "Sua sacola está vazia — volte e adicione algo antes de finalizar." };
+    return { erro: t.sacolaVazia };
   }
 
   /**
@@ -140,9 +151,7 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
    */
   if (!(await reivindicarCarrinhoParaPedido(carrinho.cartId))) {
     return {
-      erro:
-        "Este pedido já está sendo finalizado. Aguarde um instante — se a tela " +
-        "não avançar sozinha, confira seu e-mail antes de tentar de novo.",
+      erro: t.pedidoEmAndamento,
     };
   }
 
@@ -166,7 +175,7 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
     cpf: dados.cpf,
   });
   if (erroCustomer) {
-    return falhar("Não foi possível registrar seus dados. Tente novamente.");
+    return falhar(t.registrarDados);
   }
 
   const addressId = randomUUID();
@@ -186,7 +195,7 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
     state: dados.state,
   });
   if (erroAddress) {
-    return falhar("Não foi possível registrar o endereço. Tente novamente.");
+    return falhar(t.registrarEndereco);
   }
 
   const subtotalCents = carrinho.subtotalSemDescontoCents;
@@ -250,10 +259,7 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
     });
     await devolverCarrinhoParaAberto(carrinho.cartId as string);
     return {
-      erro:
-        "Não conseguimos calcular o frete automaticamente agora. Seu pedido " +
-        "não foi cobrado. Fale com a equipe para confirmar o envio e concluir " +
-        "com segurança.",
+      erro: t.freteNaoCalculado,
       suporteWhatsAppUrl: linkAjudaFrete({
         cep: dados.cep,
         cidade: dados.city,
@@ -320,6 +326,9 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
       // Brasil — mas gravada no pedido em vez de presumida na leitura, para
       // o dia em que houver mais de uma.
       currency: "BRL",
+      // Idioma em que a pessoa comprou (item 2, 15/10/2026): só texto de
+      // e-mails e páginas; nunca moeda, valor ou país.
+      locale: idioma,
       // `status` não entra mais: virou coluna gerada (migration
       // 00000000000008) e o Postgres recusa escrita nela. O pedido nasce
       // pending/not_ready pelos defaults, que é exatamente o antigo 'new'.
@@ -340,12 +349,12 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
       // inteiro por causa disso.
       orderNumber = gerarNumeroPedido();
     } else {
-      return falhar("Não foi possível criar o pedido agora. Tente novamente em instantes.");
+      return falhar(t.criarPedido);
     }
   }
 
   if (!pedidoCriado) {
-    return falhar("Não foi possível criar o pedido agora. Tente novamente em instantes.");
+    return falhar(t.criarPedido);
   }
 
   const itensPayload = carrinho.items.map((item) => ({
@@ -375,13 +384,13 @@ export async function criarPedidoAction(input: unknown): Promise<CheckoutResult>
         if (erroCliente) {
           console.error("[checkout] compensação do cliente incompleta", { orderId, code: erroCliente.code });
         } else {
-          return falhar("Não foi possível registrar os itens do pedido. Tente novamente.");
+          return falhar(t.registrarItens);
         }
       }
     } catch {
       console.error("[checkout] compensação indisponível; carrinho mantido travado", { orderId });
     }
-    return { erro: "Não foi possível registrar os itens do pedido. A finalização está bloqueada para conferência; fale com a equipe." };
+    return { erro: t.registrarItensBloqueado };
   }
 
   /**

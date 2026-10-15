@@ -86,6 +86,7 @@ export async function renderCheckout({
       <CheckoutForm
         carrinhoInicial={carrinho}
         applePayDisponivel={applePayDisponivel}
+        idioma={idioma}
       />
     );
   } else {
