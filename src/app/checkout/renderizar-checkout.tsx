@@ -245,7 +245,8 @@ function IndisponivelInternacional({ pais, idioma, localeDaRota, motivo }: { pai
       className="max-w-2xl rounded-lg border border-sand bg-paper p-6"
     >
       <h2 className="font-display text-xl text-ink">
-        {bandeira(pais)} {t.indisponivelTitulo(nomeDoPais(pais, idioma))}
+        {/* Sem bandeira para código que a tabela não conhece (`?pais=ZZ`). */}
+        {regraDoPais(pais) ? `${bandeira(pais)} ` : ""}{t.indisponivelTitulo(nomeDoPais(pais, idioma))}
       </h2>
       <p className="mt-2 text-sm text-ink/70">{motivo}</p>
       <p className="mt-4 text-sm text-ink/70">{t.indisponivelAlternativa}</p>

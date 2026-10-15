@@ -221,7 +221,13 @@ export function middleware(request: NextRequest) {
   ) {
     const response = NextResponse.redirect(url);
     if (gravaEscolha) gravarIdioma(response, localeInPath, veioDaGeolocalizacao);
-    return registrarPais(response, request);
+    // `/pt/checkout?pais=GB` volta para `/checkout?pais=GB`: o país escolhido
+    // já fica gravado aqui, não só no destino do redirect.
+    return gravarPaisEscolhido(
+      registrarPais(response, request),
+      destinoDaRequisicao(request, localeInPath),
+      gravaEscolha
+    );
   }
 
   const requestHeaders = cabecalhosDaPagina(request, localeInPath);

@@ -204,6 +204,7 @@ describe("A1 — middleware: país explícito e cookie da jornada", () => {
     const res = middleware(req("/pt/checkout?pais=GB", { headers: { "sec-fetch-dest": "document" } }));
     expect(res.headers.get("location")).toBe(`${ORIGEM}/checkout?pais=GB`);
     expect(cookieGravado(res, LOCALE_MANUAL_COOKIE)).toContain("=1");
+    expect(cookieGravado(res, PAIS_ESCOLHIDO_COOKIE)).toContain("=GB");
   });
 
   it("pré-carga, navegação RSC e POST não gravam país escolhido", () => {
