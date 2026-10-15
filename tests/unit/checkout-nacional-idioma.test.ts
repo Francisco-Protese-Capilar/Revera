@@ -89,13 +89,15 @@ describe("item 2 — idioma gravado no pedido", () => {
     expect(migracao).toContain("in ('pt', 'en', 'es', 'fr', 'de')");
   });
 
-  it("páginas do pedido e do pagamento preferem o idioma gravado ao cookie", () => {
+  it("páginas do pedido e do pagamento usam só o idioma gravado, depois o país — nunca o cookie", () => {
     const pedido = readFileSync(join(process.cwd(), "src/app/pedido/[token]/page.tsx"), "utf8");
     const pagamento = readFileSync(join(process.cwd(), "src/app/checkout/pagamento/page.tsx"), "utf8");
     expect(pedido).toContain("normalizeSiteLocale(pedido.locale as string | null) ??");
     expect(pedido).toContain(", locale\"");
-    expect(pagamento).toContain("normalizeSiteLocale(pedido.locale as string | null) ??");
+    expect(pagamento).toContain("normalizeSiteLocale(pedido.locale as string | null);");
     expect(pagamento).toContain("shipping_quote_id, locale\"");
+    expect(pedido).not.toContain("localeManualDosCookies");
+    expect(pagamento).not.toContain("localeManualDosCookies");
   });
 
   it("e-mail de confirmação usa o idioma do pedido e cai no país quando não há", async () => {

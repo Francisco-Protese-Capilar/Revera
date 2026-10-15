@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { HEADER_HEIGHT_PX } from "@/lib/layout/header";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getStripeProvider } from "@/lib/payments";
@@ -11,7 +10,7 @@ import { urlDoWebhook } from "@/lib/payments/webhook-url";
 import { baseUrl } from "@/lib/config/urls";
 import { idiomaDoPais } from "@/lib/internacional/paises";
 import { LANG_HTML, type Idioma } from "@/lib/internacional/idioma";
-import { localeManualDosCookies, normalizeSiteLocale } from "@/lib/i18n/site";
+import { normalizeSiteLocale } from "@/lib/i18n/site";
 import {
   SUPORTE_POR_MOTIVO,
   textosPagamentoIndisponivel,
@@ -117,17 +116,17 @@ export default async function PagamentoPage({
   }
 
   /**
-   * IDIOMA DA ETAPA DE PAGAMENTO (A4 da auditoria de 15/10/2026).
+   * IDIOMA DA ETAPA DE PAGAMENTO (A4 da auditoria de 15/10/2026; precedência
+   * única desde a revisão do Codex do mesmo dia).
    *
-   * A escolha manual de idioma (seletor do cabeçalho, cookie) vale aqui e
-   * vai ao gateway; sem escolha, o idioma padrão é o do país de entrega do
-   * pedido. O idioma não muda moeda, valor nem país — são os do pedido.
+   * Uma só regra para o pedido inteiro: o idioma GRAVADO no pedido
+   * (`orders.locale`, a língua em que a pessoa comprou); sem ele (pedido
+   * antigo), o idioma do país de entrega. Um cookie trocado depois não muda
+   * a língua do gateway de um pedido que já existe — e-mail, página do
+   * pedido e gateway falam a mesma língua. Idioma nunca muda moeda, valor
+   * nem país.
    */
-  const cookieStore = await cookies();
-  // O idioma gravado no pedido vence o cookie (item 2, 15/10/2026).
-  const idiomaManual =
-    normalizeSiteLocale(pedido.locale as string | null) ??
-    localeManualDosCookies((nome) => cookieStore.get(nome)?.value);
+  const idiomaManual: Idioma | null = normalizeSiteLocale(pedido.locale as string | null);
   let idiomaPagamento: Idioma = idiomaManual ?? idiomaDoPais("BR");
   let expiraEmCotacaoInternacional: Date | undefined;
   let cotadaEmInternacional: Date | undefined;
