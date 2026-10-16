@@ -230,11 +230,7 @@ export default async function PedidoPage({
         </p>
       </header>
 
-      {status === "canceled" ? (
-        <p className="rounded-lg border border-sand p-4 text-center text-ink/80">
-          {t.pedidoCancelado}
-        </p>
-      ) : (
+      {status !== "canceled" && (
         <ol className="flex flex-col gap-3">
           {PASSOS.map((passo, i) => {
             const alcancado = indiceAtual >= i;
