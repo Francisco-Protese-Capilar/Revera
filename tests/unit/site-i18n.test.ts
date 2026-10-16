@@ -85,8 +85,8 @@ describe("i18n publico do site", () => {
 
   it("traduz labels da navegacao por href, sem depender do texto editado no admin", () => {
     expect(labelForHref("/produtos", "en", "Proteses")).toBe("Hair systems");
-    expect(labelForHref("/produtos", "es", "Proteses")).toBe("Protesis capilares");
-    expect(labelForHref("/produtos", "fr", "Proteses")).toBe("Protheses capillaires");
+    expect(labelForHref("/produtos", "es", "Proteses")).toBe("Prótesis capilares");
+    expect(labelForHref("/produtos", "fr", "Proteses")).toBe("Prothèses capillaires");
     expect(labelForHref("/produtos", "de", "Proteses")).toBe("Haarsysteme");
     expect(labelForHref("/rota-nova", "en", "Fallback")).toBe("Fallback");
   });
