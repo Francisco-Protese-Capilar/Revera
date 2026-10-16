@@ -244,6 +244,9 @@ export function middleware(request: NextRequest) {
 function cabecalhosDaPagina(request: NextRequest, locale: SiteLocale): Headers {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(LOCALE_HEADER, locale);
+  // Sobrescreve também valores enviados pelo cliente: só a rota define o token.
+  const pedido = request.nextUrl.pathname.match(/^\/pedido\/([0-9a-f-]{36})\/?$/i);
+  requestHeaders.set("x-revera-pedido-token", pedido?.[1] ?? "");
   const paisAtual = paisDetectado(request);
   if (paisAtual) requestHeaders.set(GEO_COUNTRY_HEADER, paisAtual);
   return requestHeaders;

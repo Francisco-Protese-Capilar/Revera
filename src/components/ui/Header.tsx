@@ -233,7 +233,7 @@ export function Header({ locale = "pt", logo, menuPrincipal = LINKS, menuConheca
           </Link>
         ) : null}
 
-        <CartTriggerButton className="text-paper/85 hover:text-gold" />
+        <CartTriggerButton locale={localeAtual} className="text-paper/85 hover:text-gold" />
 
         {/* Mobile: <details>/<summary> em vez de drawer — não há gesto de
             "arrastar para fechar" nem trava de scroll do body, mas cobre o
