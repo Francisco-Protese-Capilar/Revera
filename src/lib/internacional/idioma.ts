@@ -102,6 +102,7 @@ export interface Dicionario {
   pedidoTituloAba: string;
   pedidoPago: string;
   pedidoEstornado: string;
+  pedidoCanceladoTitulo: string;
   pedidoAguardando: string;
   pedidoTextoPago: string;
   pedidoTextoAguardando: string;
@@ -217,6 +218,7 @@ const PT: Dicionario = {
   pedidoTituloAba: "Seu pedido — Reverá",
   pedidoPago: "Pagamento confirmado",
   pedidoEstornado: "Pagamento estornado",
+  pedidoCanceladoTitulo: "Pedido cancelado",
   pedidoAguardando: "Aguardando pagamento",
   pedidoTextoPago: "Recebemos seu pedido e já estamos cuidando dele.",
   pedidoTextoAguardando: "Assim que o pagamento for identificado, esta página se atualiza.",
@@ -340,6 +342,7 @@ const EN: Dicionario = {
   pedidoTituloAba: "Your order — Reverá",
   pedidoPago: "Payment confirmed",
   pedidoEstornado: "Payment refunded",
+  pedidoCanceladoTitulo: "Order cancelled",
   pedidoAguardando: "Awaiting payment",
   pedidoTextoPago: "We have received your order and we are already working on it.",
   pedidoTextoAguardando: "This page updates as soon as the payment is confirmed.",
@@ -480,6 +483,7 @@ const ES: Dicionario = {
   pedidoTituloAba: "Tu pedido — Reverá",
   pedidoPago: "Pago confirmado",
   pedidoEstornado: "Pago reembolsado",
+  pedidoCanceladoTitulo: "Pedido cancelado",
   pedidoAguardando: "Pago pendiente",
   pedidoTextoPago: "Hemos recibido tu pedido y ya nos estamos ocupando de él.",
   pedidoTextoAguardando: "Esta página se actualiza en cuanto se confirme el pago.",
@@ -565,7 +569,7 @@ const FR: Dicionario = {
   erroPedidoEmAndamento: "Cette commande est déjà en cours de finalisation. Patientez un instant et vérifiez votre e-mail avant de réessayer.",
   erroRegistrarDados: "Impossible d’enregistrer vos coordonnées. Réessayez.",
   erroRegistrarEndereco: "Impossible d’enregistrer l’adresse. Réessayez.",
-  pedidoTituloAba: "Votre commande — Reverá", pedidoPago: "Paiement confirmé", pedidoEstornado: "Paiement remboursé", pedidoAguardando: "Paiement en attente",
+  pedidoTituloAba: "Votre commande — Reverá", pedidoPago: "Paiement confirmé", pedidoEstornado: "Paiement remboursé", pedidoCanceladoTitulo: "Commande annulée", pedidoAguardando: "Paiement en attente",
   pedidoTextoPago: "Nous avons reçu votre commande et nous nous en occupons déjà.",
   pedidoTextoAguardando: "Cette page sera mise à jour dès que le paiement sera confirmé.",
   pedidoEmConfirmacao: "Paiement reçu, en cours de confirmation",
@@ -596,7 +600,7 @@ const DE: Dicionario = {
   resumoRessalvaPrazo: "Die Laufzeit wird vom Versanddienstleister geschätzt und umfasst weder die Vorbereitung noch die Zollabfertigung. Für internationale Sendungen garantieren wir kein Lieferdatum.",
   aceiteObrigatorio: "Bitte stimmen Sie den internationalen Versandbedingungen zu.", botaoContinuar: "Weiter zur Zahlung", botaoEnviando: "Bestellung wird erstellt…",
   erroConfiraCampos: "Bitte prüfen Sie die markierten Felder.", erroNome: "Geben Sie Ihren vollständigen Namen ein.", erroEmail: "Ungültige E-Mail-Adresse.", erroTelefone: "Geben Sie Ihre Telefonnummer ein.", erroEnderecoObrigatorio: "Geben Sie Ihre Adresse ein.", erroCidadeObrigatoria: "Geben Sie Ihren Ort ein.", erroPostalObrigatorio: "Geben Sie Ihre Postleitzahl ein.", erroPostalInvalido: (r, e) => `${r} ungültig — Beispiel: ${e}.`, erroRegiaoObrigatoria: (r) => `Geben Sie ${r} ein.`, erroPaisNaoAtendido: "Wir liefern noch nicht in dieses Land.", erroEnderecoBrasileiro: "Eine brasilianische Adresse nutzt den brasilianischen Checkout.", erroPedidoEmAndamento: "Diese Bestellung wird bereits abgeschlossen. Warten Sie einen Moment und prüfen Sie Ihre E-Mail, bevor Sie es erneut versuchen.", erroRegistrarDados: "Ihre Angaben konnten nicht gespeichert werden. Versuchen Sie es erneut.", erroRegistrarEndereco: "Die Adresse konnte nicht gespeichert werden. Versuchen Sie es erneut.",
-  pedidoTituloAba: "Ihre Bestellung — Reverá", pedidoPago: "Zahlung bestätigt", pedidoEstornado: "Zahlung erstattet", pedidoAguardando: "Zahlung ausstehend", pedidoTextoPago: "Wir haben Ihre Bestellung erhalten und bearbeiten sie bereits.", pedidoTextoAguardando: "Diese Seite wird aktualisiert, sobald die Zahlung bestätigt ist.", pedidoEmConfirmacao: "Zahlung erhalten, wird bestätigt", pedidoTextoEmConfirmacao: "PayPal hat Ihre Zahlung erhalten und schließt die Bestätigung ab. Sie müssen nicht erneut bezahlen – diese Seite aktualisiert sich automatisch.", pedidoTextoEstornado: "Diese Bestellung wurde erstattet. Kontaktieren Sie uns bei Fragen.", pedidoPassoRecebido: "Bestellung eingegangen", pedidoPassoPago: "Zahlung bestätigt", pedidoPassoPreparando: "In Vorbereitung", pedidoPassoEtiqueta: "Versandetikett erstellt", pedidoPassoEnviado: "Versandt", pedidoPassoEntregue: "Zugestellt", pedidoRastreamento: "Sendungsverfolgung", pedidoNumero: (n) => `Bestellung ${n}`, pedidoCancelado: "Diese Bestellung wurde storniert.", pedidoItens: "Artikel", pedidoSubtotal: "Zwischensumme", pedidoDesconto: "Rabatt", pedidoFrete: "Versand", pedidoFreteACombinar: "wird bestätigt", pedidoTotal: "Gesamt", pedidoEntrega: "Lieferadresse",
+  pedidoTituloAba: "Ihre Bestellung — Reverá", pedidoPago: "Zahlung bestätigt", pedidoEstornado: "Zahlung erstattet", pedidoCanceladoTitulo: "Bestellung storniert", pedidoAguardando: "Zahlung ausstehend", pedidoTextoPago: "Wir haben Ihre Bestellung erhalten und bearbeiten sie bereits.", pedidoTextoAguardando: "Diese Seite wird aktualisiert, sobald die Zahlung bestätigt ist.", pedidoEmConfirmacao: "Zahlung erhalten, wird bestätigt", pedidoTextoEmConfirmacao: "PayPal hat Ihre Zahlung erhalten und schließt die Bestätigung ab. Sie müssen nicht erneut bezahlen – diese Seite aktualisiert sich automatisch.", pedidoTextoEstornado: "Diese Bestellung wurde erstattet. Kontaktieren Sie uns bei Fragen.", pedidoPassoRecebido: "Bestellung eingegangen", pedidoPassoPago: "Zahlung bestätigt", pedidoPassoPreparando: "In Vorbereitung", pedidoPassoEtiqueta: "Versandetikett erstellt", pedidoPassoEnviado: "Versandt", pedidoPassoEntregue: "Zugestellt", pedidoRastreamento: "Sendungsverfolgung", pedidoNumero: (n) => `Bestellung ${n}`, pedidoCancelado: "Diese Bestellung wurde storniert.", pedidoItens: "Artikel", pedidoSubtotal: "Zwischensumme", pedidoDesconto: "Rabatt", pedidoFrete: "Versand", pedidoFreteACombinar: "wird bestätigt", pedidoTotal: "Gesamt", pedidoEntrega: "Lieferadresse",
   suporteTitulo: "Haben Sie Fragen?", suporteTexto: "Kontaktieren Sie unser Team zu dieser Bestellung — wir antworten während der brasilianischen Geschäftszeiten.", suporteBotao: (n) => `Frage zu Bestellung ${n}`, suporteMensagem: (n) => `Hallo! Ich habe eine Frage zu Bestellung ${n}.`, recompraBotao: "Erneut bestellen", recompraMensagem: (n) => `Hallo! Ich habe Bestellung ${n} aufgegeben und möchte erneut bestellen.`, suporteTituloPendente: "Benötigen Sie Hilfe bei der Zahlung?", suporteTextoPendente: "Wenn die Zahlung nicht funktioniert hat oder Sie vor der Zahlung eine Frage haben, kontaktieren Sie unser Team — wir antworten während der brasilianischen Geschäftszeiten.", suporteBotaoPendente: "Über WhatsApp kontaktieren", suporteMensagemPendente: (n) => `Hallo! Ich benötige Hilfe bei der Zahlung für Bestellung ${n}.`, suporteTelefoneRotulo: "Support-Telefon",
 };
 

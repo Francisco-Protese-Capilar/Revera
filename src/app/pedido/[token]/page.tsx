@@ -8,6 +8,7 @@ import { consumirPurchaseParaNavegador } from "@/lib/tracking/purchase";
 import { formatarDinheiroParaComprador } from "@/lib/internacional/moeda";
 import { idiomaDoPais, localeDoPais } from "@/lib/internacional/paises";
 import { normalizeSiteLocale } from "@/lib/i18n/site";
+import { cabecalhoDoPedido } from "@/lib/internacional/pedido-cabecalho";
 import { LANG_HTML, textos } from "@/lib/internacional/idioma";
 import { daLinha, formatarEndereco, type LinhaEndereco } from "@/lib/internacional/endereco";
 import { PurchaseTracker } from "./PurchaseTracker";
@@ -203,6 +204,7 @@ export default async function PedidoPage({
 
   const PASSOS = passos(t);
   const indiceAtual = PASSOS.findIndex((p) => p.chave === status);
+  const cabecalho = cabecalhoDoPedido(t, { cancelado: status === "canceled", estornado, pago, emConfirmacao });
 
   return (
     <main
@@ -221,22 +223,10 @@ export default async function PedidoPage({
       <header className="flex flex-col gap-2 text-center">
         <span className="eyebrow-ink">{t.pedidoNumero(pedido.order_number as string)}</span>
         <h1 className="font-display text-3xl text-ink">
-          {estornado
-            ? t.pedidoEstornado
-            : pago
-              ? t.pedidoPago
-              : emConfirmacao
-                ? t.pedidoEmConfirmacao
-                : t.pedidoAguardando}
+          {cabecalho.titulo}
         </h1>
         <p className="text-ink/70">
-          {estornado
-            ? t.pedidoTextoEstornado
-            : pago
-              ? t.pedidoTextoPago
-              : emConfirmacao
-                ? t.pedidoTextoEmConfirmacao
-                : t.pedidoTextoAguardando}
+          {cabecalho.descricao}
         </p>
       </header>
 
