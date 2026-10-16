@@ -82,6 +82,12 @@ describe("checkout internacional: cotação antes da criação do pedido", () =>
     vi.stubEnv("VERCEL_ENV", "production");
   });
 
+  it("exporta somente funções aceitas pelo runtime de Server Actions", async () => {
+    const actions = await import("@/app/checkout/actions-internacional");
+    const { ensureServerEntryExports } = await import("next/dist/build/webpack/loaders/next-flight-loader/action-validate");
+    expect(() => ensureServerEntryExports(Object.values(actions))).not.toThrow();
+  });
+
   it("mostra subtotal, frete e total sem gravar pedido nem cobrança", async () => {
     const { criarPedidoInternacionalAction } = await import("@/app/checkout/actions-internacional");
     const resultado = await criarPedidoInternacionalAction(payload);

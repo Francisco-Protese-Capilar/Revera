@@ -836,7 +836,7 @@ describe("A4 — tela de pagamento indisponível traduzida", () => {
 
 describe("A4 — erros do servidor internacional na língua da tela", () => {
   it("as cinco línguas têm as mesmas chaves e não repetem o português", async () => {
-    const { ERROS_COTACAO } = await import("@/app/checkout/actions-internacional");
+    const { ERROS_COTACAO } = await import("@/lib/internacional/erros-cotacao");
     const chaves = Object.keys(ERROS_COTACAO.pt).sort();
     for (const idioma of ["en", "es", "fr", "de"] as const) {
       expect(Object.keys(ERROS_COTACAO[idioma]).sort()).toEqual(chaves);
