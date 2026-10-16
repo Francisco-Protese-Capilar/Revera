@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
+import { ERROS_COTACAO } from "@/lib/internacional/erros-cotacao";
 import { lerAtribuicao } from "@/lib/tracking/atribuicao";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
@@ -146,16 +148,23 @@ export function CheckoutInternacionalForm({ resumo }: { resumo: ResumoInternacio
     };
 
     setEnviando(true);
-    const resultado = await criarPedidoInternacionalAction(payload);
-    setEnviando(false);
-    if (resultado?.cotacao) {
-      setCotacao(resultado.cotacao);
-      setAceite(false);
-    }
-
-    if (resultado?.erro) {
-      setErroGeral(resultado.erro);
-      setErros(resultado.camposComErro ?? {});
+    try {
+      const resultado = await criarPedidoInternacionalAction(payload);
+      if (resultado?.cotacao) {
+        setCotacao(resultado.cotacao);
+        setAceite(false);
+      }
+      if (resultado?.erro) {
+        setErroGeral(resultado.erro);
+        setErros(resultado.camposComErro ?? {});
+      }
+    } catch (erro) {
+      // Preserve o redirecionamento do Next após criar o pedido.
+      if (isRedirectError(erro)) throw erro;
+      setErroGeral(ERROS_COTACAO[resumo.idioma].indisponivel);
+    } finally {
+      // Falha de rede/Server Action não pode deixar todos os campos bloqueados.
+      setEnviando(false);
     }
   }
 
