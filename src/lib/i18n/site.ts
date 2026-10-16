@@ -302,7 +302,7 @@ export const SITE_COPY: Record<SiteLocale, SiteCopy> = {
         "Usamos cookies necesarias para que la tienda funcione. Las cookies opcionales de Meta y Google solo se activan si las aceptas.",
       aceitar: "Aceptar opcionales",
       recusar: "Rechazar",
-      saibaMais: "Saber mas",
+      saibaMais: "Saber más",
     },
     seoSuffix: {
       title: "Protesis capilares naturales",
@@ -331,10 +331,10 @@ export const SITE_COPY: Record<SiteLocale, SiteCopy> = {
     },
     footerGroups: { loja: "Boutique", saibaMais: "En savoir plus" },
     cookies: {
-      aria: "Preferences de cookies",
-      titulo: "Votre confidentialite",
+      aria: "Préférences de cookies",
+      titulo: "Votre confidentialité",
       texto:
-        "Nous utilisons les cookies necessaires au fonctionnement de la boutique. Les cookies optionnels de Meta et Google ne sont actives que si vous les acceptez.",
+        "Nous utilisons les cookies nécessaires au fonctionnement de la boutique. Les cookies optionnels de Meta et Google ne sont activés que si vous les acceptez.",
       aceitar: "Accepter les optionnels",
       recusar: "Refuser",
       saibaMais: "En savoir plus",
@@ -367,7 +367,7 @@ export const SITE_COPY: Record<SiteLocale, SiteCopy> = {
     footerGroups: { loja: "Shop", saibaMais: "Mehr erfahren" },
     cookies: {
       aria: "Cookie-Einstellungen",
-      titulo: "Ihre Privatsphare",
+      titulo: "Ihre Privatsphäre",
       texto:
         "Wir verwenden notwendige Cookies, damit der Shop funktioniert. Optionale Cookies von Meta und Google werden nur aktiviert, wenn Sie zustimmen.",
       aceitar: "Optionale akzeptieren",
