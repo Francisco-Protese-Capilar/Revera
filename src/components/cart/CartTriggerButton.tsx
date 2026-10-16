@@ -20,10 +20,12 @@ const COPY: Record<SiteLocale, { label: string; abrir: string; itens: string }> 
 // — ver Header.tsx.
 export interface CartTriggerButtonProps {
   className?: string;
+  locale?: SiteLocale;
 }
 
-export function CartTriggerButton({ className = "" }: CartTriggerButtonProps) {
-  const locale = localeFromPath(usePathname()) ?? "pt";
+export function CartTriggerButton({ className = "", locale: idioma }: CartTriggerButtonProps) {
+  const pathname = usePathname();
+  const locale = idioma ?? localeFromPath(pathname) ?? "pt";
   const copy = COPY[locale];
   const { cart, abrirDrawer, carregando } = useCart();
   const quantidadeTotal = cart.items.reduce((acc, item) => acc + item.quantity, 0);

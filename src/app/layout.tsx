@@ -4,11 +4,10 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import { ConsentimentoCookies } from "@/components/privacy/ConsentimentoCookies";
 import { rastreamentoAtivoNesteAmbiente } from "@/lib/tracking/permissao";
 import { CartProvider } from "@/components/cart/CartProvider";
-import { Footer } from "@/components/ui/Footer";
-import { Header } from "@/components/ui/Header";
 import { baseUrl } from "@/lib/config/urls";
 import { aparenciaDoSite } from "@/lib/site/aparencia";
 import { LANG_BY_SITE_LOCALE, LOCALE_HEADER, normalizeSiteLocale } from "@/lib/i18n/site";
+import { idiomaDoLayoutDoPedido } from "@/lib/i18n/pedido-layout";
 import "./globals.css";
 
 // Tipografia inspirada no sistema da Hotmart: sans moderna, comercial e
@@ -85,8 +84,11 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const site = await aparenciaDoSite();
-  const locale = normalizeSiteLocale((await headers()).get(LOCALE_HEADER)) ?? "pt";
+  const requestHeaders = await headers();
+  const locale = await idiomaDoLayoutDoPedido(
+    requestHeaders.get("x-revera-pedido-token"),
+    normalizeSiteLocale(requestHeaders.get(LOCALE_HEADER)) ?? "pt"
+  );
   return (
     <html lang={LANG_BY_SITE_LOCALE[locale]} className={hotmartLike.variable}>
       <body className="flex min-h-screen flex-col">
@@ -101,25 +103,7 @@ export default async function RootLayout({
             recarregar a página — daí um Provider no layout raiz, acima de
             tudo, em vez de estado local espalhado. */}
         <CartProvider>
-          {/* Header é `fixed` (Header.tsx) — não entra no fluxo, então não
-              empurra o conteúdo sozinho. Cada página pública compensa com
-              padding-top próprio (HEADER_HEIGHT_PX), igual o hero da home já
-              fazia antes de o header existir. */}
-          <Header
-            locale={locale}
-            logo={site.logoUrl}
-            brandName={site.brandName}
-            menuPrincipal={site.menuPrincipal}
-            menuConheca={site.menuConheca}
-            linkProfissionais={site.linkProfissionais}
-          />
-          <div className="flex-1">{children}</div>
-          <Footer
-            locale={locale}
-            logo={site.logoUrl}
-            brandName={site.brandName}
-            instagramUrl={site.instagramUrl}
-          />
+          {children}
         </CartProvider>
       </body>
     </html>
