@@ -43,3 +43,41 @@ it("libera o formulário após falha da Server Action e permite nova consulta", 
     await act(async () => { root.unmount(); });
   }
 });
+
+it("prioriza e seleciona Stripe mesmo quando PayPal vem primeiro, permitindo escolher a alternativa", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { root.render(React.createElement(CheckoutInternacionalForm, { resumo: { ...resumo, gateways: ["paypal", "stripe"] } })); });
+    const options = container.querySelectorAll<HTMLInputElement>('input[name="paymentPreference"]');
+    expect(Array.from(options, option => option.value)).toEqual(["stripe", "paypal"]);
+    expect(options[0].checked).toBe(true);
+    expect(options[0].closest("label")!.textContent).toContain("Recommended");
+    expect(options[1].closest("label")!.textContent).toContain("Another way to pay");
+    await act(async () => { options[1].click(); });
+    expect(options[1].checked).toBe(true);
+    expect(options[0].checked).toBe(false);
+    action.mockResolvedValueOnce({ erro: "Check your details" });
+    await act(async () => { container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    expect(action.mock.calls[0][0].paymentPreference).toBe("paypal");
+  } finally {
+    await act(async () => { root.unmount(); });
+  }
+});
+
+it("mantém PayPal selecionado quando Stripe não está disponível", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { root.render(React.createElement(CheckoutInternacionalForm, { resumo: { ...resumo, gateways: ["paypal"] } })); });
+    const options = container.querySelectorAll<HTMLInputElement>('input[name="paymentPreference"]');
+    expect(options).toHaveLength(1);
+    expect(options[0].value).toBe("paypal");
+    expect(options[0].checked).toBe(true);
+    expect(container.textContent).not.toContain("Recommended");
+  } finally {
+    await act(async () => { root.unmount(); });
+  }
+});
