@@ -18,11 +18,18 @@ import type { ProviderInternacionalRevera } from "@/lib/payments/revera";
 
 const inputClass = "min-h-toque rounded-md border border-sand bg-paper px-3 py-2 text-ink";
 const rotuloCartao: Record<Idioma, string> = {
-  pt: "Cartão",
-  en: "Card",
-  es: "Tarjeta",
-  fr: "Carte",
-  de: "Karte",
+  pt: "Cartão de crédito ou débito",
+  en: "Credit or debit card",
+  es: "Tarjeta de crédito o débito",
+  fr: "Carte de crédit ou de débit",
+  de: "Kredit- oder Debitkarte",
+};
+const pagamentoCopy: Record<Idioma, { recomendado: string; alternativa: string }> = {
+  pt: { recomendado: "Recomendado", alternativa: "Outra forma de pagar" },
+  en: { recomendado: "Recommended", alternativa: "Another way to pay" },
+  es: { recomendado: "Recomendado", alternativa: "Otra forma de pagar" },
+  fr: { recomendado: "Recommandé", alternativa: "Autre moyen de paiement" },
+  de: { recomendado: "Empfohlen", alternativa: "Andere Zahlungsmethode" },
 };
 
 /**
@@ -96,7 +103,8 @@ export function CheckoutInternacionalForm({ resumo }: { resumo: ResumoInternacio
     codigoPostal: "",
   });
   const [aceite, setAceite] = useState(false);
-  const [paymentPreference, setPaymentPreference] = useState<ProviderInternacionalRevera>(resumo.gateways[0] ?? "paypal");
+  const gateways = [...resumo.gateways].sort((a, b) => Number(b === "stripe") - Number(a === "stripe"));
+  const [paymentPreference, setPaymentPreference] = useState<ProviderInternacionalRevera>(gateways[0] ?? "paypal");
   const [erros, setErros] = useState<Record<string, string>>({});
   const [erroGeral, setErroGeral] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -365,8 +373,8 @@ export function CheckoutInternacionalForm({ resumo }: { resumo: ResumoInternacio
         <legend className="px-1 font-display text-xl text-ink">
           {resumo.idioma === "pt" ? "Forma de pagamento" : resumo.idioma === "es" ? "Forma de pago" : resumo.idioma === "fr" ? "Moyen de paiement" : resumo.idioma === "de" ? "Zahlungsart" : "Payment method"}
         </legend>
-        {resumo.gateways.map((gateway) => (
-          <label key={gateway} className="flex cursor-pointer items-center gap-3 rounded-md border border-sand px-4 py-3 text-sm text-ink">
+        {gateways.map((gateway) => (
+          <label key={gateway} className={`flex min-h-toque cursor-pointer items-center gap-3 rounded-md border px-4 py-4 text-sm text-ink ${gateway === "stripe" ? "border-ink bg-white ring-1 ring-ink" : "border-sand bg-paper"}`}>
             <input
               type="radio"
               name="paymentPreference"
@@ -376,7 +384,15 @@ export function CheckoutInternacionalForm({ resumo }: { resumo: ResumoInternacio
               onChange={() => setPaymentPreference(gateway)}
               className="h-4 w-4 accent-ink"
             />
-            <span>{gateway === "stripe" ? `${rotuloCartao[resumo.idioma]} — Stripe` : "PayPal"}</span>
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className={gateway === "stripe" ? "font-semibold" : "font-normal"}>
+                {gateway === "stripe" ? rotuloCartao[resumo.idioma] : "PayPal"}
+              </span>
+              <span className="text-xs text-ink/80">
+                {gateway === "stripe" ? "Stripe" : pagamentoCopy[resumo.idioma].alternativa}
+              </span>
+            </span>
+            {gateway === "stripe" ? <span className="rounded bg-ink px-2 py-1 text-xs font-semibold text-white">{pagamentoCopy[resumo.idioma].recomendado}</span> : null}
           </label>
         ))}
         {erros.paymentPreference ? <p className="text-xs text-red-700">{erros.paymentPreference}</p> : null}
