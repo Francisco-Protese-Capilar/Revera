@@ -98,6 +98,41 @@ describe("reavaliarCapturaPayPal", () => {
     expect((email.mock.calls[0]?.[0] as { texto: string }).texto).toContain("NÃO DESPACHAR");
   });
 
+  it("estorno de outra tentativa não mexe no pedido pago pela tentativa aprovada", async () => {
+    fake = new FakeSupabase({
+      orders: [{ id: PEDIDO, order_number: "REV-T", payment_status: "paid", canceled_at: null, currency: "EUR", total_cents: 23281, dispatch_hold_reason: null, dispatch_hold_at: null }],
+      payments: [
+        { id: "pay-ok", order_id: PEDIDO, provider: "paypal", status: "approved", provider_payment_id: "ORDEM-QUE-PAGOU", created_at: "2026-10-06T00:00:00Z" },
+        { id: "pay-dup", order_id: PEDIDO, provider: "paypal", status: "failed", provider_payment_id: ORDEM, created_at: "2026-10-07T00:00:00Z" },
+      ],
+    });
+    estado = { estado: "reembolsada" };
+    await expect(reavaliar()).resolves.toMatchObject({ estado: "nada_a_fazer" });
+    expect(reembolsar).not.toHaveBeenCalled();
+    expect(fake.tabela("orders")[0]?.payment_status).toBe("paid");
+    expect((email.mock.calls[0]?.[0] as { texto: string }).texto).toContain("NÃO foi alterado");
+  });
+
+  it("estorno da tentativa aprovada estorna o pedido mesmo havendo outras tentativas", async () => {
+    fake = new FakeSupabase({
+      orders: [{ id: PEDIDO, order_number: "REV-T", payment_status: "paid", canceled_at: null, currency: "EUR", total_cents: 23281, dispatch_hold_reason: null, dispatch_hold_at: null }],
+      payments: [
+        { id: "pay-ok", order_id: PEDIDO, provider: "paypal", status: "approved", provider_payment_id: ORDEM, created_at: "2026-10-06T00:00:00Z" },
+        { id: "pay-dup", order_id: PEDIDO, provider: "paypal", status: "failed", provider_payment_id: "OUTRA", created_at: "2026-10-07T00:00:00Z" },
+      ],
+    });
+    estado = { estado: "estornada" };
+    await expect(reavaliar()).resolves.toEqual({ estado: "reembolsado" });
+    expect(reembolsar).toHaveBeenCalled();
+  });
+
+  it("sem nenhuma tentativa aprovada (pedido antigo), o estorno continua valendo", async () => {
+    banco("paid", "pending");
+    estado = { estado: "reembolsada" };
+    await expect(reavaliar()).resolves.toEqual({ estado: "reembolsado" });
+    expect(reembolsar).toHaveBeenCalled();
+  });
+
   it("reembolso parcial só avisa, não estorna o pedido", async () => {
     banco("paid", "approved");
     estado = { estado: "parcialmente_reembolsada" };
