@@ -223,6 +223,22 @@ export async function reavaliarCapturaPayPal(
 
     case "reembolsada":
     case "estornada": {
+      // Só a tentativa que PAGOU o pedido (status 'approved') pode estorná-lo.
+      // Estorno de outra tentativa do mesmo pedido (uma cobrança duplicada
+      // devolvida, por exemplo) não mexe no pedido pago — antes marcava
+      // 'refunded' e travava o envio de uma venda paga (achado Codex, 08/10).
+      // Só vale quando OUTRA tentativa está aprovada: sem nenhuma aprovada
+      // (pedido antigo), o estorno segue valendo como antes.
+      const outraAprovada = (pagamentos ?? []).some((p) => p.status === "approved" && p.id !== pagamento.id);
+      if (pedido.payment_status === "paid" && pagamento.status !== "approved" && outraAprovada) {
+        await avisar(`estorno-outra-tentativa-${paypalOrderId}`, `PayPal: estorno de outra tentativa — ${numero}`, [
+          "ESTORNO DE UMA TENTATIVA QUE NÃO É A QUE PAGOU O PEDIDO",
+          "",
+          "O pedido continua pago pela outra cobrança PayPal e NÃO foi alterado.",
+          "Confira no PayPal se a cobrança que pagou o pedido segue concluída antes de despachar.",
+        ]);
+        return { estado: "nada_a_fazer", detalhe: "estorno de tentativa não aprovada" };
+      }
       const r = await registrarReembolso(orderId, {
         provider: "paypal",
         transactionId: paypalOrderId,
