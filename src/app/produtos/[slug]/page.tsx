@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { urlDeMidiaDoProjeto } from "@/lib/conteudo/midia";
 import { baseUrl } from "@/lib/config/urls";
 import { textosDaPagina } from "@/lib/conteudo/textos";
 import { urlsDasFotosDoSite } from "@/lib/conteudo/fotos-do-site";
@@ -135,7 +136,7 @@ export default async function ProdutoPage({
     "/media/hero/produto-close-2.jpeg",
   ]);
 
-  const [{ data: colors }, { data: regras }] = await Promise.all([
+  const [{ data: coresDoBanco }, { data: regras }] = await Promise.all([
     supabase
       .from("colors")
       .select("id, code, name, hex_preview, photo_url")
@@ -147,6 +148,7 @@ export default async function ProdutoPage({
       .eq("product_id", produto.id)
       .order("min_qty"),
   ]);
+  const colors = (coresDoBanco ?? []).map((c) => ({ ...c, photo_url: urlDeMidiaDoProjeto(c.photo_url as string | null) }));
 
   /**
    * Variante inativa nunca chega à tela (29/08/2026).
