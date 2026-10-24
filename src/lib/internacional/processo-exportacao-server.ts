@@ -23,7 +23,7 @@ const um = <T>(x: T | T[] | null | undefined): T | null => Array.isArray(x) ? (x
 export async function carregarProcessosExportacao(s: Cliente, ids: string[]) {
   const resultado = new Map<string, { entrada: EntradaProcesso; avaliacao: ReturnType<typeof avaliarExportacao> }>();
   if (!ids.length) return resultado;
-  const [pedidos, itens, pacotes, documentos, config, focusNotas, legacyShipments] = await Promise.all([
+  const [pedidos, itens, pacotes, documentos, config, focusNotas, legacyShipments, nfeManualLiberada] = await Promise.all([
     s.from("orders").select("id,payment_status,canceled_at,shipping_status,subtotal_cents,discount_cents,shipping_cents,currency,customers(full_name,email,phone),addresses(country,city,postal_code,line1,recipient_name),order_items(id,product_name_snapshot,quantity),shipments(id,provider,tracking_code,status,metadata)").in("id", ids),
     s.from("order_export_items").select("order_id,order_item_id,ncm,hs_code,country_of_origin,description_en,net_weight_g,customs_value_cents,fiscal_value_brl_cents,fx_rate_brl_per_unit,fx_source,fx_date").in("order_id", ids),
     s.from("order_export_packages").select("*").in("order_id", ids),
@@ -31,9 +31,12 @@ export async function carregarProcessosExportacao(s: Cliente, ids: string[]) {
     s.from("international_export_settings").select("*").eq("singleton", true).maybeSingle(),
     s.from("order_focus_nfe").select("order_id,status,access_key,xml_storage_path,danfe_storage_path").in("order_id", ids),
     s.from("legacy_dhl_shipments").select("order_id,shipment_id").in("order_id", ids),
+    // Lista fechada da migration 48: NF-e manual anexada antes da exigência
+    // da Focus, sem guia. Vale só com a NF-e da mesma chave conferida.
+    s.from("manual_nfe_dispatch_orders").select("order_id,nfe_reference").in("order_id", ids),
   ]);
   const erro = [pedidos.error, itens.error, pacotes.error, documentos.error, config.error,
-    focusNotas.error, legacyShipments.error].find(Boolean);
+    focusNotas.error, legacyShipments.error, nfeManualLiberada.error].find(Boolean);
   if (erro) throw new Error(`Não foi possível avaliar a exportação: ${erro.message}`);
   const exporter = config.data as Exportador | null;
   for (const raw of pedidos.data ?? []) {
@@ -75,9 +78,12 @@ export async function carregarProcessosExportacao(s: Cliente, ids: string[]) {
       documentos: documentosPedido,
       focusNfeAuthorized: focus?.status === "authorized" && Boolean(focus.access_key && focus.xml_storage_path &&
         focus.danfe_storage_path && documentosPedido.some(d => d.kind === "nfe" && d.reference === focus.access_key)),
-      legacyManualNfe: !focus && Boolean(remessa && ["label_created", "registrado_manual"].includes(remessa.status ?? "") &&
+      legacyManualNfe: !focus && (Boolean(remessa && ["label_created", "registrado_manual"].includes(remessa.status ?? "") &&
         legacyShipments.data?.some(l => l.order_id === p.id && l.shipment_id === remessa.id) &&
-        documentosPedido.some(d => d.kind === "nfe" && d.source === "external" && d.status === "verified")),
+        documentosPedido.some(d => d.kind === "nfe" && d.source === "external" && d.status === "verified")) ||
+        Boolean(nfeManualLiberada.data?.some(m => m.order_id === p.id &&
+          documentosPedido.some(d => d.kind === "nfe" && d.source === "external" && d.status === "verified" &&
+            d.reference === m.nfe_reference)))),
       exportador: exporter,
       invoiceModeForOrder: modoInvoice,
       invoiceDhlComprovada: invoiceDaApi || invoiceManual,

@@ -49,6 +49,19 @@ describe("regra única da exportação", () => {
     expect(result.podeCriarEtiqueta).toBe(false);
     expect(result.bloqueiosEtiqueta.join(" ")).toContain("Focus");
   });
+  it("NF-e manual liberada (migration 48), sem guia: registra guia manual e despacha, sem etiqueta automática", () => {
+    const e = base(); e.focusNfeAuthorized = false; e.legacyManualNfe = true; e.rastreio = null;
+    const sem = avaliarExportacao(e);
+    expect(sem.podeRegistrarGuia).toBe(true);
+    expect(sem.podeCriarEtiqueta).toBe(false);
+    expect(sem.podeDespachar).toBe(false);
+    e.rastreio = "1234567890";
+    expect(avaliarExportacao(e).podeDespachar).toBe(true);
+  });
+  it("NF-e manual sem conferência não libera nem a guia manual", () => {
+    const e = base(); e.focusNfeAuthorized = false; e.legacyManualNfe = false; e.rastreio = null;
+    expect(avaliarExportacao(e).podeRegistrarGuia).toBe(false);
+  });
   it("não usa catálogo como fallback se faltar snapshot de um item", () => {
     const e = base(); e.itens.pop();
     const a = avaliarExportacao(e);
