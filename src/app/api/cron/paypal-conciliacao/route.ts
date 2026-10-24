@@ -41,11 +41,14 @@ const RETIDOS_POR_RODADA = 15;
 // Purchase repetido); com estorno, marca 'refunded' e o despacho trava.
 const PAGOS_JANELA_DIAS = 30;
 const PAGOS_POR_RODADA = 10;
-// Rodízio sem estado: a cada rodada de 15 min a janela anda 10 posições na
-// lista inteira (ordem fixa), então todo pago elegível é conferido a cada
-// ceil(N/10) rodadas, qualquer que seja N. Um sorteio entre os 100 mais
-// novos deixava os antigos de fora para sempre (revisão Codex, 24/10/2026).
-const INTERVALO_RODADA_MS = 15 * 60_000;
+// Rodízio com progresso GRAVADO: um marcador em audit_logs guarda a posição
+// na lista inteira (ordem fixa created_at, id) e só avança pelo que foi de
+// fato conferido. Se o tempo da rodada acabar no meio, a próxima continua de
+// onde parou. Sorteio e relógio pulavam pedidos (revisões Codex, 24/10/2026).
+const ACAO_CURSOR_PAGOS = "cron.paypal_pagos_cursor";
+// Orçamento: retidos + pendentes usam até 30 s; os pagos têm até os 45 s.
+const LIMITE_VENDAS_MS = 30_000;
+const LIMITE_TOTAL_MS = 45_000;
 // Timeout da consulta da ordem; quem protege os 60 s é o corte de 45 s no laço.
 const TIMEOUT_POR_PEDIDO_MS = 8_000;
 
@@ -125,14 +128,22 @@ export async function GET(req: NextRequest) {
       .neq("orders.currency", "BRL")
       .not("orders.shipping_status", "in", "(shipped,delivered)")
       .gte("orders.created_at", new Date(agora - PAGOS_JANELA_DIAS * 86_400_000).toISOString());
-  let pagosNaoEnviados: Array<{ orderId: string; paypalOrderId: string }> = [];
+  const pagosNaoEnviados: Array<{ orderId: string; paypalOrderId: string }> = [];
+  let inicioJanela = 0;
   const { count: totalPagos, error: erroContagem } = await pagosElegiveis({ count: "exact", head: true });
   if (erroContagem) {
     console.error("[cron/paypal] falha ao contar pagos não enviados", erroContagem.message);
   } else if (totalPagos && totalPagos > 0) {
-    const rodada = Math.floor(agora / INTERVALO_RODADA_MS);
+    const { data: cursor } = await supabase
+      .from("audit_logs")
+      .select("diff")
+      .eq("action", ACAO_CURSOR_PAGOS)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const posicao = Number((cursor?.diff as { posicao?: unknown } | null)?.posicao);
     const tamanho = Math.min(PAGOS_POR_RODADA, totalPagos);
-    const inicioJanela = (rodada * PAGOS_POR_RODADA) % totalPagos;
+    inicioJanela = Number.isInteger(posicao) && posicao >= 0 ? posicao % totalPagos : 0;
     const fimJanela = inicioJanela + tamanho - 1;
     // A janela dá a volta no fim da lista: o rodízio é um ciclo, sem buraco.
     const trechos: Array<[number, number]> = fimJanela < totalPagos
@@ -148,11 +159,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Vendas a confirmar primeiro; a conferência dos pagos usa o tempo que sobrar.
-  const fila: Array<{ orderId: string; paypalOrderId: string | null }> = [
+  // Vendas a confirmar primeiro, com teto de tempo; os pagos têm o resto.
+  const vendas: Array<{ orderId: string; paypalOrderId: string | null }> = [
     ...retidosPendentes.map((orderId) => ({ orderId, paypalOrderId: ordemRetida.get(orderId) ?? null })),
     ...(data ?? []).map((l) => ({ orderId: l.order_id as string, paypalOrderId: l.provider_payment_id as string })),
-    ...pagosNaoEnviados,
   ];
 
   // Uma instância só: o token OAuth é guardado por instância.
@@ -160,9 +170,7 @@ export async function GET(req: NextRequest) {
   const inicio = Date.now();
   const vistos = new Set<string>();
   const resultados: Record<string, number> = {};
-  for (const { orderId, paypalOrderId } of fila) {
-    if (vistos.has(orderId)) continue;
-    if (Date.now() - inicio > 45_000) break; // a próxima rodada continua
+  const conferir = async (orderId: string, paypalOrderId: string | null) => {
     vistos.add(orderId);
     const r = await reavaliarCapturaPayPal(
       orderId,
@@ -171,6 +179,28 @@ export async function GET(req: NextRequest) {
       { timeoutMs: TIMEOUT_POR_PEDIDO_MS }
     );
     resultados[r.estado] = (resultados[r.estado] ?? 0) + 1;
+  };
+  for (const { orderId, paypalOrderId } of vendas) {
+    if (vistos.has(orderId)) continue;
+    if (Date.now() - inicio > LIMITE_VENDAS_MS) break; // a próxima rodada continua
+    await conferir(orderId, paypalOrderId);
+  }
+  // Avança o marcador só pelos pagos que esta rodada de fato percorreu.
+  let percorridos = 0;
+  for (const { orderId, paypalOrderId } of pagosNaoEnviados) {
+    if (Date.now() - inicio > LIMITE_TOTAL_MS) break;
+    if (!vistos.has(orderId)) await conferir(orderId, paypalOrderId);
+    percorridos++;
+  }
+  if (percorridos > 0 && totalPagos) {
+    const { error: erroCursor } = await supabase.from("audit_logs").insert({
+      admin_user_id: null,
+      action: ACAO_CURSOR_PAGOS,
+      entity_type: "cron",
+      entity_id: "paypal-pagos",
+      diff: { posicao: (inicioJanela + percorridos) % totalPagos, total: totalPagos },
+    });
+    if (erroCursor) console.error("[cron/paypal] não gravou o marcador dos pagos", erroCursor.message);
   }
 
   console.info("[cron/paypal]", JSON.stringify({ pedidos: vistos.size, resultados }));

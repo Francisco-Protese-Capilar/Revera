@@ -11,6 +11,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 type Chamada = { metodo: string; args: unknown[] };
 const consultas: Array<{ tabela: string; chamadas: Chamada[] }> = [];
 let respostas: (tabela: string, chamadas: Chamada[]) => unknown[];
+/** Marcadores gravados pelo cron, guardados entre rodadas como no banco. */
+let marcadores: Array<{ action: string; diff: unknown }> = [];
 
 function construtor(tabela: string) {
   const chamadas: Chamada[] = [];
@@ -19,6 +21,13 @@ function construtor(tabela: string) {
   for (const metodo of ["select", "eq", "neq", "or", "not", "is", "gte", "lte", "in", "order", "limit", "range"]) {
     proxy[metodo] = (...args: unknown[]) => { chamadas.push({ metodo, args }); return proxy; };
   }
+  proxy.insert = (linha: { action: string; diff: unknown }) => { marcadores.push(linha); return Promise.resolve({ error: null }); };
+  proxy.maybeSingle = () => {
+    if (tabela === "audit_logs" && tem(chamadas, "eq", "action", "cron.paypal_pagos_cursor")) {
+      return Promise.resolve({ data: marcadores.at(-1) ?? null, error: null });
+    }
+    return Promise.resolve({ data: null, error: null });
+  };
   proxy.then = (ok: (v: unknown) => unknown) => {
     const linhas = respostas(tabela, chamadas);
     const sel = chamadas.find((c) => c.metodo === "select");
@@ -51,6 +60,7 @@ async function rodar() {
 beforeEach(() => {
   vi.resetModules();
   consultas.length = 0;
+  marcadores = [];
   process.env.CRON_SECRET = "segredo-cron";
   reavaliar.mockReset().mockResolvedValue({ estado: "nada_a_fazer", detalhe: "pedido paid" });
   respostas = (tabela, chamadas) => {
@@ -103,19 +113,43 @@ describe("cron PayPal: pedidos pagos ainda não enviados", () => {
         ? Array.from({ length: N }, (_, i) => ({ order_id: `pago-${i}`, provider_payment_id: `O-${i}` }))
         : [];
     const vistos = new Set<string>();
-    const base = Date.UTC(2026, 9, 24, 12, 0, 0);
-    vi.useFakeTimers({ toFake: ["Date"] });
+    for (let r = 0; r < Math.ceil(N / 10); r++) {
+      reavaliar.mockClear();
+      vi.resetModules();
+      await rodar();
+      for (const c of reavaliar.mock.calls) vistos.add(c[0] as string);
+    }
+    expect(vistos.size).toBe(N);
+  });
+
+  it("orçamento esgotado no meio: a próxima rodada continua de onde parou, sem pular ninguém", async () => {
+    // 10 pagos e 8 vendas pendentes; cada conferência gasta 6 s. Em 45 s
+    // cabem poucas, e as vendas têm teto de 30 s: os pagos ainda andam.
+    respostas = (tabela, chamadas) => {
+      if (tabela !== "payments") return [];
+      if (tem(chamadas, "eq", "orders.payment_status", "paid")) {
+        return Array.from({ length: 10 }, (_, i) => ({ order_id: `pago-${i}`, provider_payment_id: `O-${i}` }));
+      }
+      return Array.from({ length: 8 }, (_, i) => ({ order_id: `pend-${i}`, provider_payment_id: `P-${i}` }));
+    };
+    let relogio = Date.UTC(2026, 9, 24, 12, 0, 0);
+    const agoraReal = Date.now;
+    Date.now = () => relogio;
+    reavaliar.mockImplementation(async () => { relogio += 6_000; return { estado: "nada_a_fazer", detalhe: "x" }; });
+    const pagosVistos = new Set<string>();
     try {
-      for (let r = 0; r < Math.ceil(N / 10) + 1; r++) {
-        vi.setSystemTime(base + r * 15 * 60_000);
+      for (let r = 0; r < 8; r++) {
         reavaliar.mockClear();
         vi.resetModules();
         await rodar();
-        for (const c of reavaliar.mock.calls) vistos.add(c[0] as string);
+        const nestaRodada = reavaliar.mock.calls.map((c) => c[0] as string).filter((id) => id.startsWith("pago-"));
+        expect(nestaRodada.length).toBeGreaterThan(0); // tempo reservado aos pagos
+        nestaRodada.forEach((id) => pagosVistos.add(id));
+        relogio += 15 * 60_000;
       }
     } finally {
-      vi.useRealTimers();
+      Date.now = agoraReal;
     }
-    expect(vistos.size).toBe(N);
+    expect(pagosVistos.size).toBe(10);
   });
 });
