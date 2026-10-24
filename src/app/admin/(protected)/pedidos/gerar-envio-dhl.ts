@@ -187,8 +187,11 @@ export async function gerarEnvioDhlAction(input: unknown): Promise<GerarDhlResul
     return { error: processoTravado?.avaliacao.bloqueiosEtiqueta.join(" ") ?? "Dados fiscais mudaram. Recarregue." };
   }
   const { data: exporterAtCall } = await s.from("international_export_settings").select("*").eq("singleton", true).maybeSingle();
+  // A trava de estorno é relida aqui, logo antes de comprar a guia: o aviso
+  // do PayPal pode chegar depois da primeira leitura (revisão Codex, 24/10).
   const { data: aindaValido } = await s.from("orders").select("id").eq("id", orderId)
-    .eq("payment_status", "paid").eq("shipping_status", "label_processing").is("canceled_at", null).maybeSingle();
+    .eq("payment_status", "paid").eq("shipping_status", "label_processing").is("canceled_at", null)
+    .is("dispatch_hold_reason", null).maybeSingle();
   if (!exporterAtCall || !aindaValido || issuerFields.some(key => issuerAtIssue[key] !== exporterAtCall[key])) {
     await s.from("shipments").delete().eq("id", lock.id).eq("status", "creating");
     await s.from("orders").update({ shipping_status: order.shipping_status, updated_at: new Date().toISOString() })
@@ -207,12 +210,12 @@ export async function gerarEnvioDhlAction(input: unknown): Promise<GerarDhlResul
   // A reserva precede a leitura definitiva dos dados mutáveis. O payload
   // completo é persistido antes da chamada para permitir reconciliação pelo
   // identificador do pedido mesmo que a resposta da DHL se perca.
-  const payloadSelect = "id,order_number,payment_status,shipping_status,canceled_at,currency,subtotal_cents,discount_cents,total_cents,updated_at,addresses(*),customers(full_name,email,phone),order_items(id,product_name_snapshot,unit_price_cents,quantity)";
+  const payloadSelect = "id,order_number,payment_status,shipping_status,canceled_at,dispatch_hold_reason,currency,subtotal_cents,discount_cents,total_cents,updated_at,addresses(*),customers(full_name,email,phone),order_items(id,product_name_snapshot,unit_price_cents,quantity)";
   const { data: orderAtCall } = await s.from("orders").select(payloadSelect).eq("id", orderId).maybeSingle();
   const freshAddress = (Array.isArray(orderAtCall?.addresses) ? orderAtCall.addresses[0] : orderAtCall?.addresses) as Record<string, unknown> | null;
   const freshCustomer = (Array.isArray(orderAtCall?.customers) ? orderAtCall.customers[0] : orderAtCall?.customers) as Record<string, unknown> | null;
   if (!orderAtCall || !freshAddress || !freshCustomer || orderAtCall.payment_status !== "paid" ||
-      orderAtCall.shipping_status !== "label_processing" || orderAtCall.canceled_at ||
+      orderAtCall.shipping_status !== "label_processing" || orderAtCall.canceled_at || orderAtCall.dispatch_hold_reason ||
       orderAtCall.currency !== order.currency ||
       orderAtCall.subtotal_cents - orderAtCall.discount_cents !== processoTravado.entrada.valorMercadoriasCents ||
       !freshAddress.recipient_name || freshCustomer.full_name !== contactAtIssue.nome ||

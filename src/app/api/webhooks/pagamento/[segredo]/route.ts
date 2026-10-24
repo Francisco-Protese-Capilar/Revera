@@ -142,12 +142,28 @@ export async function POST(
   });
 
   if (erroEvento) {
-    if (erroEvento.code === "23505") {
-      // Já processado. 200 para o gateway parar de reenviar.
+    if (erroEvento.code !== "23505") {
+      console.error("[webhook] falha ao gravar evento", erroEvento);
+      return NextResponse.json({ erro: "erro interno" }, { status: 500 });
+    }
+    // Repetido. Só é "já processado" se tiver processed_at: um evento que
+    // falhou no meio e não conseguiu ser apagado (ex.: estorno com o banco
+    // instável) precisa ser reprocessado no reenvio, senão o estorno se
+    // perde (revisão Codex, 24/10/2026). Mesmo desenho da rota da Stripe;
+    // os passos seguintes têm travas de estado e são idempotentes.
+    const { data: eventoExistente, error: erroLerEvento } = await supabase
+      .from("payment_events")
+      .select("processed_at")
+      .eq("provider", provider.name)
+      .eq("provider_event_id", hint.eventId)
+      .maybeSingle();
+    if (erroLerEvento || !eventoExistente) {
+      console.error("[webhook] não foi possível conferir evento repetido", erroLerEvento);
+      return NextResponse.json({ erro: "evento não verificável" }, { status: 500 });
+    }
+    if (eventoExistente.processed_at) {
       return NextResponse.json({ ok: true, repetido: true });
     }
-    console.error("[webhook] falha ao gravar evento", erroEvento);
-    return NextResponse.json({ erro: "erro interno" }, { status: 500 });
   }
 
   if (hint.kind === "ignorar") {
