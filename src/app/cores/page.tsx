@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
+import { urlDeMidiaDoProjeto } from "@/lib/conteudo/midia";
 import { Reveal } from "@/components/ui/Reveal";
 import { HEADER_HEIGHT_PX } from "@/lib/layout/header";
 import type { SiteLocale } from "@/lib/i18n/site";
@@ -40,11 +41,12 @@ const COPY: Record<SiteLocale, { eyebrow:string; title:string; intro:string; how
 async function CoresContent(locale: SiteLocale = "pt") {
   const copy = COPY[locale];
   const supabase = await createClient();
-  const { data: colors } = await supabase
+  const { data: coresDoBanco } = await supabase
     .from("colors")
     .select("id, code, name, photo_url")
     .eq("is_active", true)
     .order("sort_order");
+  const colors = (coresDoBanco ?? []).map((c) => ({ ...c, photo_url: urlDeMidiaDoProjeto(c.photo_url as string | null) }));
 
   return (
     <main

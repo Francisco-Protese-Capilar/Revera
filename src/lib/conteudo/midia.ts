@@ -194,6 +194,33 @@ const CAMINHO_PUBLICO_MIDIA = `/storage/v1/object/public/${BUCKET_MIDIA}/`;
  * comparação exata, mas continua fechando o buraco que motivou a checagem:
  * host de terceiro não passa dos dois jeitos.
  */
+/**
+ * Foto do bucket público `site-media` de OUTRO projeto Supabase vira a do
+ * projeto atual, com o mesmo caminho (23/10/2026).
+ *
+ * Na mudança de banco de 15/10 (Oregon → São Paulo), os arquivos foram
+ * copiados, mas as URLs gravadas em `colors.photo_url` e `site_texts`
+ * continuaram apontando para o projeto antigo. O next/image só aceita o host
+ * atual, e a cartela /cores ficou uma semana com 20 fotos quebradas sem
+ * ninguém ver. Lendo por aqui, a próxima mudança de banco não repete isso.
+ *
+ * Só mexe em https://<projeto>.supabase.co/storage/v1/object/public/site-media/…
+ * Qualquer outro valor (public/, outro bucket, terceiro) volta igual.
+ */
+export function urlDeMidiaDoProjeto<T extends string | null | undefined>(valor: T): T {
+  if (typeof valor !== "string") return valor;
+  let atual: string;
+  try {
+    atual = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname;
+  } catch {
+    return valor;
+  }
+  if (!atual) return valor;
+  const m = valor.match(/^https:\/\/([a-z0-9]+)\.supabase\.co(\/storage\/v1\/object\/public\/site-media\/.+)$/i);
+  if (!m || `${m[1]}.supabase.co`.toLowerCase() === atual.toLowerCase()) return valor;
+  return `https://${atual}${m[2]}` as T;
+}
+
 function hostDeMidiaAceito(hostname: string): boolean {
   let hostDoProjeto: string | undefined;
   try {

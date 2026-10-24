@@ -26,6 +26,7 @@
 
 import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
 import { REGISTRO, type ChaveDeTexto } from "./registro";
+import { urlDeMidiaDoProjeto } from "./midia";
 import { MIDIA_REMOVIDA, urlsDasFotosDoSite } from "./fotos-do-site";
 import { traducaoDeConteudo } from "@/lib/i18n/conteudo-publico";
 import { DEFAULT_SITE_LOCALE, type SiteLocale } from "@/lib/i18n/site";
@@ -86,7 +87,7 @@ export async function edicoesDaPagina(pagina: string): Promise<Map<string, strin
         // mais provável de alguém apagar um título sem querer, e o resultado
         // disso não pode ser um H1 invisível.
         .filter((l) => typeof l.valor === "string" && l.valor.trim() !== "")
-        .map((l) => [l.chave as string, l.valor as string])
+        .map((l) => [l.chave as string, urlDeMidiaDoProjeto(l.valor as string)])
     );
   } catch {
     // Silêncio proposital: o caminho bom (texto do código) já existe.

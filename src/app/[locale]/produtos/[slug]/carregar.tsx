@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { urlDeMidiaDoProjeto } from "@/lib/conteudo/midia";
 import { converterCentavosBrl, obterCotacaoPtax } from "@/lib/internacional/cambio-ptax";
 import { ProdutoInternacional, type VarianteInternacional } from "./ProdutoInternacional";
 import type { SiteLocale } from "@/lib/i18n/site";
@@ -61,7 +62,7 @@ export async function renderProdutoInternacional(slug: string, locale: SiteLocal
         colorId: (variant.color_id as string | null) ?? null,
         colorCode: (color?.code as string | null) ?? null,
         colorName: (color?.name as string | null) ?? null,
-        colorPhotoUrl: (color?.photo_url as string | null) ?? null,
+        colorPhotoUrl: urlDeMidiaDoProjeto((color?.photo_url as string | null) ?? null),
         stockQty: variant.stock_qty as number,
         priceBrlCents,
         priceCents: semPreco ? 0 : nacional || !quote ? priceBrlCents : converterCentavosBrl(priceBrlCents, quote.reaisPorUnidade),
