@@ -40,8 +40,12 @@ const RETIDOS_POR_RODADA = 15;
 // reavaliarCapturaPayPal não faz nada com pago + "concluída" (sem e-mail nem
 // Purchase repetido); com estorno, marca 'refunded' e o despacho trava.
 const PAGOS_JANELA_DIAS = 30;
-const PAGOS_LIDOS_MAX = 100;
 const PAGOS_POR_RODADA = 10;
+// Rodízio sem estado: a cada rodada de 15 min a janela anda 10 posições na
+// lista inteira (ordem fixa), então todo pago elegível é conferido a cada
+// ceil(N/10) rodadas, qualquer que seja N. Um sorteio entre os 100 mais
+// novos deixava os antigos de fora para sempre (revisão Codex, 24/10/2026).
+const INTERVALO_RODADA_MS = 15 * 60_000;
 // Timeout da consulta da ordem; quem protege os 60 s é o corte de 45 s no laço.
 const TIMEOUT_POR_PEDIDO_MS = 8_000;
 
@@ -109,23 +113,40 @@ export async function GET(req: NextRequest) {
   }
 
   // A ordem conferida é a do pagamento APROVADO: é ela que sustenta o 'paid'.
-  const { data: pagos, error: erroPagos } = await supabase
-    .from("payments")
-    .select("order_id, provider_payment_id, orders!inner(payment_status, canceled_at, currency, shipping_status, created_at)")
-    .eq("provider", "paypal")
-    .eq("status", "approved")
-    .not("provider_payment_id", "is", null)
-    .eq("orders.payment_status", "paid")
-    .is("orders.canceled_at", null)
-    .neq("orders.currency", "BRL")
-    .not("orders.shipping_status", "in", "(shipped,delivered)")
-    .gte("orders.created_at", new Date(agora - PAGOS_JANELA_DIAS * 86_400_000).toISOString())
-    .order("created_at", { ascending: false })
-    .limit(PAGOS_LIDOS_MAX);
-  if (erroPagos) console.error("[cron/paypal] falha ao ler pagos não enviados", erroPagos.message);
-  const pagosNaoEnviados = embaralhar(
-    (pagos ?? []).map((l) => ({ orderId: l.order_id as string, paypalOrderId: l.provider_payment_id as string }))
-  ).slice(0, PAGOS_POR_RODADA);
+  const pagosElegiveis = (opcoes?: { count: "exact"; head: true }) =>
+    supabase
+      .from("payments")
+      .select("order_id, provider_payment_id, orders!inner(payment_status, canceled_at, currency, shipping_status, created_at)", opcoes)
+      .eq("provider", "paypal")
+      .eq("status", "approved")
+      .not("provider_payment_id", "is", null)
+      .eq("orders.payment_status", "paid")
+      .is("orders.canceled_at", null)
+      .neq("orders.currency", "BRL")
+      .not("orders.shipping_status", "in", "(shipped,delivered)")
+      .gte("orders.created_at", new Date(agora - PAGOS_JANELA_DIAS * 86_400_000).toISOString());
+  let pagosNaoEnviados: Array<{ orderId: string; paypalOrderId: string }> = [];
+  const { count: totalPagos, error: erroContagem } = await pagosElegiveis({ count: "exact", head: true });
+  if (erroContagem) {
+    console.error("[cron/paypal] falha ao contar pagos não enviados", erroContagem.message);
+  } else if (totalPagos && totalPagos > 0) {
+    const rodada = Math.floor(agora / INTERVALO_RODADA_MS);
+    const tamanho = Math.min(PAGOS_POR_RODADA, totalPagos);
+    const inicioJanela = (rodada * PAGOS_POR_RODADA) % totalPagos;
+    const fimJanela = inicioJanela + tamanho - 1;
+    // A janela dá a volta no fim da lista: o rodízio é um ciclo, sem buraco.
+    const trechos: Array<[number, number]> = fimJanela < totalPagos
+      ? [[inicioJanela, fimJanela]]
+      : [[inicioJanela, totalPagos - 1], [0, fimJanela - totalPagos]];
+    for (const [de, ate] of trechos) {
+      const { data: pagos, error: erroPagos } = await pagosElegiveis()
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(de, ate);
+      if (erroPagos) console.error("[cron/paypal] falha ao ler pagos não enviados", erroPagos.message);
+      pagosNaoEnviados.push(...(pagos ?? []).map((l) => ({ orderId: l.order_id as string, paypalOrderId: l.provider_payment_id as string })));
+    }
+  }
 
   // Vendas a confirmar primeiro; a conferência dos pagos usa o tempo que sobrar.
   const fila: Array<{ orderId: string; paypalOrderId: string | null }> = [

@@ -16,10 +16,17 @@ function construtor(tabela: string) {
   const chamadas: Chamada[] = [];
   consultas.push({ tabela, chamadas });
   const proxy: Record<string, unknown> = {};
-  for (const metodo of ["select", "eq", "neq", "or", "not", "is", "gte", "lte", "in", "order", "limit"]) {
+  for (const metodo of ["select", "eq", "neq", "or", "not", "is", "gte", "lte", "in", "order", "limit", "range"]) {
     proxy[metodo] = (...args: unknown[]) => { chamadas.push({ metodo, args }); return proxy; };
   }
-  proxy.then = (ok: (v: unknown) => unknown) => ok({ data: respostas(tabela, chamadas), error: null });
+  proxy.then = (ok: (v: unknown) => unknown) => {
+    const linhas = respostas(tabela, chamadas);
+    const sel = chamadas.find((c) => c.metodo === "select");
+    if ((sel?.args[1] as { head?: boolean } | undefined)?.head) return ok({ data: null, count: linhas.length, error: null });
+    const r = chamadas.find((c) => c.metodo === "range");
+    const fatia = r ? linhas.slice(r.args[0] as number, (r.args[1] as number) + 1) : linhas;
+    return ok({ data: fatia, error: null });
+  };
   return proxy;
 }
 
@@ -78,12 +85,37 @@ describe("cron PayPal: pedidos pagos ainda não enviados", () => {
     expect(c.some((x) => x.metodo === "gte" && x.args[0] === "orders.created_at")).toBe(true);
   });
 
-  it("no máximo 10 pagos por rodada", async () => {
+  it("no máximo 10 pagos por rodada, em ordem fixa do mais antigo para o mais novo", async () => {
     respostas = (tabela, chamadas) =>
       tabela === "payments" && tem(chamadas, "eq", "orders.payment_status", "paid")
         ? Array.from({ length: 30 }, (_, i) => ({ order_id: `pago-${i}`, provider_payment_id: `O-${i}` }))
         : [];
     await rodar();
     expect(reavaliar).toHaveBeenCalledTimes(10);
+    const pagos = consultas.find((q) => q.tabela === "payments" && tem(q.chamadas, "eq", "orders.payment_status", "paid") && q.chamadas.some((c) => c.metodo === "range"));
+    expect(tem(pagos!.chamadas, "order", "created_at", { ascending: true })).toBe(true);
+  });
+
+  it("rodízio: com mais de 100 elegíveis, todos são conferidos em rodadas seguidas", async () => {
+    const N = 137;
+    respostas = (tabela, chamadas) =>
+      tabela === "payments" && tem(chamadas, "eq", "orders.payment_status", "paid")
+        ? Array.from({ length: N }, (_, i) => ({ order_id: `pago-${i}`, provider_payment_id: `O-${i}` }))
+        : [];
+    const vistos = new Set<string>();
+    const base = Date.UTC(2026, 9, 24, 12, 0, 0);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      for (let r = 0; r < Math.ceil(N / 10) + 1; r++) {
+        vi.setSystemTime(base + r * 15 * 60_000);
+        reavaliar.mockClear();
+        vi.resetModules();
+        await rodar();
+        for (const c of reavaliar.mock.calls) vistos.add(c[0] as string);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(vistos.size).toBe(N);
   });
 });
