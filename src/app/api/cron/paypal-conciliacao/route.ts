@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Conferência periódica dos pedidos PayPal ainda pendentes (06/10/2026).
+ * Conferência periódica dos pedidos PayPal pendentes (06/10/2026) e, desde
+ * 24/10/2026, dos pagos que ainda não foram enviados.
  *
  * Rede de segurança do webhook: se um aviso do PayPal se perder (fora do ar,
  * assinatura recusada, evento não assinado), o pedido não fica "aguardando
@@ -32,6 +33,15 @@ const PENDENTE_MAX_HORAS = 24;
 // cabem numa rodada, o embaralho garante que nenhuma fica de fora sempre.
 const MARCAS_MAX = 100;
 const RETIDOS_POR_RODADA = 15;
+// Fila de pagos ainda não enviados (24/10/2026): um estorno ou chargeback cujo
+// aviso se perdeu deixava o pedido 'paid' e despachável, porque esta
+// conferência só olhava pendentes (achado do Codex, 08/10). Agora os pagos
+// PayPal que ainda não saíram são reconferidos no PayPal por 30 dias.
+// reavaliarCapturaPayPal não faz nada com pago + "concluída" (sem e-mail nem
+// Purchase repetido); com estorno, marca 'refunded' e o despacho trava.
+const PAGOS_JANELA_DIAS = 30;
+const PAGOS_LIDOS_MAX = 100;
+const PAGOS_POR_RODADA = 10;
 // Timeout da consulta da ordem; quem protege os 60 s é o corte de 45 s no laço.
 const TIMEOUT_POR_PEDIDO_MS = 8_000;
 
@@ -98,9 +108,30 @@ export async function GET(req: NextRequest) {
     retidosPendentes = embaralhar((aindaPendentes ?? []).map((o) => o.id as string)).slice(0, RETIDOS_POR_RODADA);
   }
 
+  // A ordem conferida é a do pagamento APROVADO: é ela que sustenta o 'paid'.
+  const { data: pagos, error: erroPagos } = await supabase
+    .from("payments")
+    .select("order_id, provider_payment_id, orders!inner(payment_status, canceled_at, currency, shipping_status, created_at)")
+    .eq("provider", "paypal")
+    .eq("status", "approved")
+    .not("provider_payment_id", "is", null)
+    .eq("orders.payment_status", "paid")
+    .is("orders.canceled_at", null)
+    .neq("orders.currency", "BRL")
+    .not("orders.shipping_status", "in", "(shipped,delivered)")
+    .gte("orders.created_at", new Date(agora - PAGOS_JANELA_DIAS * 86_400_000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(PAGOS_LIDOS_MAX);
+  if (erroPagos) console.error("[cron/paypal] falha ao ler pagos não enviados", erroPagos.message);
+  const pagosNaoEnviados = embaralhar(
+    (pagos ?? []).map((l) => ({ orderId: l.order_id as string, paypalOrderId: l.provider_payment_id as string }))
+  ).slice(0, PAGOS_POR_RODADA);
+
+  // Vendas a confirmar primeiro; a conferência dos pagos usa o tempo que sobrar.
   const fila: Array<{ orderId: string; paypalOrderId: string | null }> = [
     ...retidosPendentes.map((orderId) => ({ orderId, paypalOrderId: ordemRetida.get(orderId) ?? null })),
     ...(data ?? []).map((l) => ({ orderId: l.order_id as string, paypalOrderId: l.provider_payment_id as string })),
+    ...pagosNaoEnviados,
   ];
 
   // Uma instância só: o token OAuth é guardado por instância.
