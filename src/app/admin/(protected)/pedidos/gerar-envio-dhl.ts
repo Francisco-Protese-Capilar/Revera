@@ -93,11 +93,12 @@ export async function gerarEnvioDhlAction(input: unknown): Promise<GerarDhlResul
   const orderId = parsed.data.orderId;
   const s = await createClient();
   const [{ data: order, error }, { data: exporter }] = await Promise.all([
-    s.from("orders").select("id, order_number, payment_status, shipping_status, canceled_at, currency, total_cents, addresses(*), customers(full_name,email,phone), order_items(id,product_name_snapshot,unit_price_cents,quantity), shipments(id,provider,tracking_code,status,metadata), payments(provider,status,provider_payment_id)").eq("id", orderId).maybeSingle(),
+    s.from("orders").select("id, order_number, payment_status, shipping_status, canceled_at, dispatch_hold_reason, currency, total_cents, addresses(*), customers(full_name,email,phone), order_items(id,product_name_snapshot,unit_price_cents,quantity), shipments(id,provider,tracking_code,status,metadata), payments(provider,status,provider_payment_id)").eq("id", orderId).maybeSingle(),
     s.from("international_export_settings").select("*").eq("singleton", true).maybeSingle(),
   ]);
   if (error || !order) return { error: "Pedido não encontrado." };
   if (order.canceled_at || order.payment_status !== "paid") return { error: "A etiqueta exige um pedido internacional pago e não cancelado." };
+  if (order.dispatch_hold_reason) return { error: "Despacho travado: o PayPal avisou estorno ou disputa. Confira o PayPal e libere a trava na página do pedido." };
   const address = (Array.isArray(order.addresses) ? order.addresses[0] : order.addresses) as Record<string, unknown> | null;
   const customer = (Array.isArray(order.customers) ? order.customers[0] : order.customers) as Record<string, unknown> | null;
   if (!address || address.country === "BR") return { error: "Este pedido não é internacional." };

@@ -75,7 +75,7 @@ export async function marcarEnvioAction(input: MarcarEnvioInput): Promise<AcaoPe
 
   const { data: pedido, error: erroLeitura } = await supabase
     .from("orders")
-    .select("id, payment_status, shipping_status, canceled_at")
+    .select("id, payment_status, shipping_status, canceled_at, dispatch_hold_reason")
     .eq("id", orderId)
     .maybeSingle();
   if (erroLeitura || !pedido) {
@@ -90,6 +90,9 @@ export async function marcarEnvioAction(input: MarcarEnvioInput): Promise<AcaoPe
   }
 
   const atual = pedido.shipping_status as ShippingStatusValue;
+  if (pedido.dispatch_hold_reason && ["label_processing", "label_created", "shipped"].includes(novoEnvio)) {
+    return { error: "Despacho travado: o PayPal avisou estorno ou disputa. Confira o PayPal e libere a trava na página do pedido." };
+  }
   if (novoEnvio === "shipped" || novoEnvio === "delivered") {
     const processo = (await carregarProcessosExportacao(supabase, [orderId])).get(orderId);
     if (processo?.entrada.internacional && !processo.avaliacao.podeDespachar) {
@@ -414,5 +417,53 @@ export async function marcarVendasVistasAction(): Promise<AcaoPedidoResultado> {
   }
   revalidatePath("/admin/pedidos");
   revalidatePath("/admin");
+  return { ok: true };
+}
+
+const liberarTravaSchema = z.object({ orderId: z.string().uuid() });
+
+/**
+ * Libera a trava de despacho gravada por um aviso de estorno (24/10/2026).
+ *
+ * A trava nasce quando o PayPal avisa estorno ou disputa e a ordem ainda lê
+ * "concluída" (ver paypal-captura.ts). Só uma pessoa sabe dizer se a disputa
+ * foi resolvida a favor da loja, então só um admin libera, depois de
+ * conferir no PayPal. Se o pagamento foi mesmo estornado, o pedido vira
+ * 'refunded' pelo caminho normal e o despacho continua bloqueado por isso.
+ */
+export async function liberarTravaDespachoAction(
+  input: z.infer<typeof liberarTravaSchema>
+): Promise<AcaoPedidoResultado> {
+  const parsed = liberarTravaSchema.safeParse(input);
+  if (!parsed.success) return { error: "Pedido inválido." };
+  const { orderId } = parsed.data;
+  const supabase = await createClient();
+
+  const { data: pedido } = await supabase
+    .from("orders")
+    .select("id, dispatch_hold_reason, dispatch_hold_at")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (!pedido) return { error: "Pedido não encontrado. Confira se você tem permissão de admin." };
+  if (!pedido.dispatch_hold_reason) return { error: "Este pedido não tem trava de despacho. Recarregue a página." };
+
+  const { data: aplicado, error } = await supabase
+    .from("orders")
+    .update({ dispatch_hold_reason: null, dispatch_hold_at: null, updated_at: new Date().toISOString() })
+    .eq("id", orderId)
+    .eq("dispatch_hold_reason", pedido.dispatch_hold_reason)
+    .select("id")
+    .maybeSingle();
+  if (error || !aplicado) return { error: "Não foi possível liberar. Recarregue a página e tente de novo." };
+
+  await registrarAuditoria(supabase, {
+    action: "pedido.liberar_trava_despacho",
+    entityType: "orders",
+    entityId: orderId,
+    diff: { motivo: pedido.dispatch_hold_reason, travado_em: pedido.dispatch_hold_at },
+  });
+
+  revalidatePath(`/admin/pedidos/${orderId}`);
+  revalidatePath("/admin/pedidos");
   return { ok: true };
 }

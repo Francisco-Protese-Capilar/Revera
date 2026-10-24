@@ -165,6 +165,15 @@ export async function POST(
       transactionId: hint.transactionId,
       eventId: hint.eventId,
     });
+    if (resultado === "indisponivel") {
+      // Banco falhou ao gravar o estorno: apaga o evento e pede reenvio.
+      await supabase
+        .from("payment_events")
+        .delete()
+        .eq("provider", provider.name)
+        .eq("provider_event_id", hint.eventId);
+      return NextResponse.json({ erro: "falha ao registrar estorno" }, { status: 503 });
+    }
     await supabase
       .from("payment_events")
       .update({ processed_at: new Date().toISOString() })

@@ -324,6 +324,29 @@ describe("webhook nacional Asaas", () => {
     expect(fake.tabela("payment_events")[0]?.processed_at).toBeTruthy();
   });
 
+  it("estorno que o banco não grava responde 503 e apaga o evento para o reenvio", async () => {
+    fake.tabela("orders")[0]!.payment_status = "paid";
+    fake.falharProxima("orders", "update");
+
+    const post = await rotaStripeNaGenerica();
+    const corpo = JSON.stringify({
+      id: "evt_stripe_refund_falha",
+      type: "charge.refunded",
+      data: { object: { id: "ch_2", payment_intent: "pi_2", metadata: { order_id: ORDER } } },
+    });
+
+    const resposta = await post(corpo);
+
+    expect(resposta.status).toBe(503);
+    expect(fake.tabela("payment_events")).toHaveLength(0);
+    expect(fake.tabela("orders")[0]).toMatchObject({ payment_status: "paid" });
+
+    // O reenvio do gateway, com o banco de volta, registra o estorno.
+    const segunda = await post(corpo);
+    expect(segunda.status).toBe(200);
+    expect(fake.tabela("orders")[0]).toMatchObject({ payment_status: "refunded" });
+  });
+
   it("preserva webhook InfinitePay pendente durante migração para Asaas", async () => {
     fake.tabela("payments")[0] = {
       id: "pay_infinite",

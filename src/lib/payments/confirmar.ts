@@ -375,7 +375,7 @@ async function registrarTentativa(
 export async function registrarReembolso(
   orderId: string,
   origem: { provider: string; transactionId: string | null; eventId: string }
-): Promise<"reembolsado" | "ignorado"> {
+): Promise<"reembolsado" | "ignorado" | "indisponivel"> {
   const supabase = createAdminClient();
 
   const { data: atualizado, error } = await supabase
@@ -387,8 +387,11 @@ export async function registrarReembolso(
     .maybeSingle();
 
   if (error) {
+    // Falha do banco NÃO é "ignorado": quem chamou precisa pedir reenvio ao
+    // gateway. Antes, o webhook respondia 200, o PayPal parava de avisar e o
+    // pedido estornado seguia pago e despachável (achado Codex, 07/10/2026).
     console.error("[reembolso] falha ao marcar", error);
-    return "ignorado";
+    return "indisponivel";
   }
   if (!atualizado) return "ignorado";
 
