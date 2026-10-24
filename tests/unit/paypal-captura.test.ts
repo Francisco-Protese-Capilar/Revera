@@ -37,7 +37,7 @@ vi.mock("@/lib/payments/paypal-provider", () => ({
 
 function banco(paymentStatus = "pending", pagamentoStatus = "pending") {
   fake = new FakeSupabase({
-    orders: [{ id: PEDIDO, order_number: "REV-T", payment_status: paymentStatus, canceled_at: null, currency: "EUR", total_cents: 23281 }],
+    orders: [{ id: PEDIDO, order_number: "REV-T", payment_status: paymentStatus, canceled_at: null, currency: "EUR", total_cents: 23281, dispatch_hold_reason: null, dispatch_hold_at: null }],
     payments: [{ id: "pay-1", order_id: PEDIDO, provider: "paypal", status: pagamentoStatus, provider_payment_id: ORDEM, created_at: "2026-10-06T00:00:00Z" }],
   });
 }
@@ -121,13 +121,42 @@ describe("reavaliarCapturaPayPal", () => {
     await expect(reavaliar()).resolves.toEqual({ estado: "sem_paypal" });
   });
 
-  it("aviso de chargeback com captura ainda concluída: alerta a equipe, não mexe no pedido", async () => {
+  it("aviso de chargeback com captura ainda concluída: trava o despacho, avisa e não estorna", async () => {
     banco("paid", "approved");
     estado = { estado: "concluida" };
     await expect(reavaliar("PAYMENT.CAPTURE.REVERSED")).resolves.toMatchObject({ estado: "nada_a_fazer" });
     expect(reembolsar).not.toHaveBeenCalled();
+    const pedido = fake.tabela("orders")[0];
+    expect(pedido?.payment_status).toBe("paid");
+    expect(pedido?.dispatch_hold_reason).toBe("paypal_aviso_estorno");
+    expect(pedido?.dispatch_hold_at).toEqual(expect.any(String));
     expect(email).toHaveBeenCalledTimes(1);
-    expect((email.mock.calls[0]?.[0] as { texto: string }).texto).toContain("ANTES de despachar");
+    expect((email.mock.calls[0]?.[0] as { texto: string }).texto).toContain("DESPACHO FOI TRAVADO");
+  });
+
+  it("aviso de estorno repetido não regrava a trava nem o horário", async () => {
+    banco("paid", "approved");
+    fake.tabela("orders")[0]!.dispatch_hold_reason = "paypal_aviso_estorno";
+    fake.tabela("orders")[0]!.dispatch_hold_at = "2026-10-20T00:00:00Z";
+    estado = { estado: "concluida" };
+    await reavaliar("PAYMENT.CAPTURE.REFUNDED");
+    expect(fake.tabela("orders")[0]?.dispatch_hold_at).toBe("2026-10-20T00:00:00Z");
+  });
+
+  it("se a trava não grava, devolve indisponível para o PayPal reenviar (e não manda e-mail)", async () => {
+    banco("paid", "approved");
+    fake.falharProxima("orders", "update");
+    estado = { estado: "concluida" };
+    await expect(reavaliar("PAYMENT.CAPTURE.REVERSED")).resolves.toMatchObject({ estado: "indisponivel" });
+    expect(email).not.toHaveBeenCalled();
+  });
+
+  it("estorno que o banco não consegue gravar devolve indisponível (não 'reembolsado')", async () => {
+    banco("paid", "approved");
+    reembolsar.mockResolvedValue("indisponivel");
+    estado = { estado: "reembolsada" };
+    await expect(reavaliar()).resolves.toMatchObject({ estado: "indisponivel" });
+    expect(email).not.toHaveBeenCalled();
   });
 
   it("recusa de uma ordem num pedido já pago não muda nada nem avisa", async () => {

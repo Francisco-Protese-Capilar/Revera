@@ -324,6 +324,54 @@ describe("webhook nacional Asaas", () => {
     expect(fake.tabela("payment_events")[0]?.processed_at).toBeTruthy();
   });
 
+  it("estorno que o banco não grava responde 503 e apaga o evento para o reenvio", async () => {
+    fake.tabela("orders")[0]!.payment_status = "paid";
+    fake.falharProxima("orders", "update");
+
+    const post = await rotaStripeNaGenerica();
+    const corpo = JSON.stringify({
+      id: "evt_stripe_refund_falha",
+      type: "charge.refunded",
+      data: { object: { id: "ch_2", payment_intent: "pi_2", metadata: { order_id: ORDER } } },
+    });
+
+    const resposta = await post(corpo);
+
+    expect(resposta.status).toBe(503);
+    expect(fake.tabela("payment_events")).toHaveLength(0);
+    expect(fake.tabela("orders")[0]).toMatchObject({ payment_status: "paid" });
+
+    // O reenvio do gateway, com o banco de volta, registra o estorno.
+    const segunda = await post(corpo);
+    expect(segunda.status).toBe(200);
+    expect(fake.tabela("orders")[0]).toMatchObject({ payment_status: "refunded" });
+  });
+
+  it("estorno que falha e cujo evento não consegue ser apagado é reprocessado no reenvio", async () => {
+    fake.tabela("orders")[0]!.payment_status = "paid";
+    fake.falharProxima("orders", "update");
+    fake.falharProxima("payment_events", "delete");
+
+    const post = await rotaStripeNaGenerica();
+    const corpo = JSON.stringify({
+      id: "evt_stripe_refund_preso",
+      type: "charge.refunded",
+      data: { object: { id: "ch_3", payment_intent: "pi_3", metadata: { order_id: ORDER } } },
+    });
+
+    expect((await post(corpo)).status).toBe(503);
+    expect(fake.tabela("payment_events")).toHaveLength(1);
+    expect(fake.tabela("payment_events")[0]?.processed_at ?? null).toBeNull();
+
+    const segunda = await post(corpo);
+    expect(segunda.status).toBe(200);
+    expect(fake.tabela("orders")[0]).toMatchObject({ payment_status: "refunded" });
+    expect(fake.tabela("payment_events")[0]?.processed_at).toBeTruthy();
+
+    // Terceiro aviso, já processado: só "repetido".
+    expect(await (await post(corpo)).json()).toMatchObject({ ok: true, repetido: true });
+  });
+
   it("preserva webhook InfinitePay pendente durante migração para Asaas", async () => {
     fake.tabela("payments")[0] = {
       id: "pay_infinite",

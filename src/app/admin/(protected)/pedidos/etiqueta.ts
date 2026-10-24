@@ -434,6 +434,11 @@ export async function gerarEtiquetaAction(
    * mesmo motivo (painel/postagem/route.ts, 19/08/2026).
    * ========================================================================= */
 
+  if (await despachoTravado(supabase, pedido.id)) {
+    await devolverStatus("despacho travado por aviso de estorno antes de criar a etiqueta");
+    return { error: "Despacho travado: o PayPal avisou estorno ou disputa. Confira o PayPal e libere a trava na página do pedido." };
+  }
+
   let resultado;
   try {
     resultado = await provider.createLabel({
@@ -557,6 +562,22 @@ async function concluirEtiqueta(
   const { orderId, shipmentId, providerShipmentId, envioAtual } = args;
   const provider = getShippingProvider();
 
+  if (await despachoTravado(supabase, orderId)) {
+    // A etiqueta existe, não paga: nada saiu da carteira.
+    await supabase
+      .from("orders")
+      .update({ shipping_status: "shipping_error", updated_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .eq("shipping_status", "label_processing");
+    await registrarAuditoria(supabase, {
+      action: "pedido.etiqueta_falhou",
+      entityType: "orders",
+      entityId: orderId,
+      diff: { etapa: "antes do pagamento da etiqueta", etiqueta: providerShipmentId, motivo: "despacho travado" },
+    });
+    return { error: "Despacho travado: o PayPal avisou estorno ou disputa. Confira o PayPal e libere a trava na página do pedido." };
+  }
+
   try {
     await provider.payLabel(providerShipmentId);
   } catch (e) {
@@ -614,11 +635,27 @@ async function concluirEtiqueta(
     })
     .eq("id", shipmentId);
 
-  await supabase
+  const { data: concluido, error: erroConclusao } = await supabase
     .from("orders")
     .update({ shipping_status: "label_created", updated_at: new Date().toISOString() })
     .eq("id", orderId)
-    .eq("shipping_status", "label_processing");
+    .eq("shipping_status", "label_processing")
+    .select("id")
+    .maybeSingle();
+  if (erroConclusao || !concluido) {
+    // Etiqueta paga, mas o pedido não andou (trava de despacho no banco ou
+    // concorrência). Não declarar sucesso: fica no histórico para conferir.
+    await registrarAuditoria(supabase, {
+      action: "pedido.etiqueta_paga_sem_concluir",
+      entityType: "orders",
+      entityId: orderId,
+      diff: { etiqueta: providerShipmentId, rastreio, motivo: erroConclusao?.message?.slice(0, 300) ?? "pedido mudou" },
+    });
+    return {
+      error:
+        "A etiqueta foi paga, mas o pedido não pôde ser marcado como etiquetado (pode haver trava de despacho). Confira o pedido antes de postar.",
+    };
+  }
 
   await registrarAuditoria(supabase, {
     action: "pedido.gerar_etiqueta",
@@ -637,4 +674,23 @@ async function concluirEtiqueta(
   revalidatePath(`/admin/pedidos/${orderId}`);
 
   return { ok: true, rastreio, etiquetaUrl };
+}
+
+/**
+ * Relê a trava de despacho logo antes de gastar dinheiro (24/10/2026). Um
+ * aviso de estorno pode chegar depois que esta emissão já travou o pedido em
+ * 'label_processing' — o gatilho do banco só barraria o 'label_created',
+ * depois da etiqueta comprada (revisão Codex). Falha de leitura conta como
+ * travado: na dúvida, não compra.
+ */
+async function despachoTravado(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orderId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("dispatch_hold_reason")
+    .eq("id", orderId)
+    .maybeSingle();
+  return Boolean(error || !data || data.dispatch_hold_reason);
 }

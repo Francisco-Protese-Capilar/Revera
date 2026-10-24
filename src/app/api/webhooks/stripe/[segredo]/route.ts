@@ -102,6 +102,10 @@ export async function POST(
       transactionId: hint.transactionId,
       eventId: hint.eventId,
     });
+    if (resultado === "indisponivel") {
+      // Evento fica sem processed_at: o reenvio da Stripe reprocessa.
+      return NextResponse.json({ erro: "falha ao registrar estorno" }, { status: 503 });
+    }
     if (!(await marcarProcessado(supabase, provider.name, hint.eventId))) {
       return NextResponse.json({ erro: "falha ao finalizar reembolso" }, { status: 503 });
     }

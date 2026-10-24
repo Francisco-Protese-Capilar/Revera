@@ -44,7 +44,7 @@ export async function registrarEnvioDhlAction(input: unknown): Promise<Registrar
   const supabase = await createClient();
   const { data: pedido, error: erroLeitura } = await supabase
     .from("orders")
-    .select("id, payment_status, shipping_status, canceled_at, addresses(country), shipments(id, provider, status, tracking_code), payments(provider, status, provider_payment_id)")
+    .select("id, payment_status, shipping_status, canceled_at, dispatch_hold_reason, addresses(country), shipments(id, provider, status, tracking_code), payments(provider, status, provider_payment_id)")
     .eq("id", orderId)
     .maybeSingle();
   if (erroLeitura || !pedido) {
@@ -52,6 +52,7 @@ export async function registrarEnvioDhlAction(input: unknown): Promise<Registrar
   }
   if (pedido.canceled_at) return { error: "Este pedido está cancelado." };
   if (pedido.payment_status !== "paid") return { error: "Este pedido não está pago." };
+  if (pedido.dispatch_hold_reason) return { error: "Despacho travado: o PayPal avisou estorno ou disputa. Confira o PayPal e libere a trava na página do pedido." };
 
   const endereco = (Array.isArray(pedido.addresses) ? pedido.addresses[0] : pedido.addresses) as
     | { country?: string | null }
@@ -172,9 +173,10 @@ export async function reconciliarGuiaDhlAction(form: FormData): Promise<{ ok: tr
   if (!user) return { error: "Acesso administrativo necessário." };
   const { data: admin } = await s.from("admin_users").select("id").eq("id", user.id).maybeSingle();
   if (!admin) return { error: "Acesso administrativo necessário." };
-  const { data: order } = await s.from("orders").select("id,payment_status,canceled_at,shipping_status,shipments(id,provider,status,tracking_code,metadata)")
+  const { data: order } = await s.from("orders").select("id,payment_status,canceled_at,shipping_status,dispatch_hold_reason,shipments(id,provider,status,tracking_code,metadata)")
     .eq("id", parsed.data.orderId).maybeSingle();
   if (!order || order.payment_status !== "paid" || order.canceled_at) return { error: "Pedido não está pago ou foi cancelado." };
+  if (order.dispatch_hold_reason) return { error: "Despacho travado: o PayPal avisou estorno ou disputa. Confira o PayPal e libere a trava na página do pedido." };
   const shipment = (Array.isArray(order.shipments) ? order.shipments[0] : order.shipments) as
     { id: string; provider: string; status: string; tracking_code: string | null; metadata: Record<string, unknown> } | null;
   if (!shipment || shipment.provider !== "dhl" || shipment.status !== "creation_unknown" || shipment.tracking_code)

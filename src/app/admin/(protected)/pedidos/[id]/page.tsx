@@ -16,6 +16,7 @@ import { StatusActions } from "../StatusActions";
 import { BotaoEtiqueta } from "../BotaoEtiqueta";
 import { BotaoImprimirEtiqueta } from "../BotaoImprimirEtiqueta";
 import { LiberarReservaButton } from "../LiberarReservaButton";
+import { LiberarTravaDespacho } from "../LiberarTravaDespacho";
 import { ChecklistExportacao } from "../ChecklistExportacao";
 import { RegistrarEnvioDhl } from "../RegistrarEnvioDhl";
 import { GerarEtiquetaDhl } from "../GerarEtiquetaDhl";
@@ -411,6 +412,9 @@ export default async function DetalhePedidoPage({ params }: { params: Promise<{ 
 
       <section className="flex flex-col gap-3 print:hidden">
         <h2 className="font-display text-lg text-ink">Ações</h2>
+        {pedido.dispatch_hold_reason ? (
+          <LiberarTravaDespacho orderId={pedido.id} travadoEm={(pedido.dispatch_hold_at as string | null) ?? null} />
+        ) : null}
         {pedidoInternacional ? (
           paymentStatus === "paid" && !canceladoEm ? (
             <div className="flex flex-col gap-3">

@@ -25,6 +25,9 @@ import { enviarEmailOperacional } from "@/lib/notificacoes/email-operacional";
 /** Ação do histórico que põe o pedido na fila longa da conferência. */
 export const ACAO_PAYPAL_RETIDO = "pedido.paypal_retido";
 
+/** Motivo gravado em orders.dispatch_hold_reason pelo aviso de estorno. */
+export const TRAVA_ESTORNO_PAYPAL = "paypal_aviso_estorno";
+
 /**
  * Registra UMA vez no histórico que o PayPal segurou a captura deste pedido.
  *
@@ -139,14 +142,28 @@ export async function reavaliarCapturaPayPal(
     origem.eventoGateway === "PAYMENT.CAPTURE.REVERSED" ||
     origem.eventoGateway === "PAYMENT.CAPTURE.REFUNDED";
   if (avisoDeEstorno && estado.estado === "concluida" && pedido.payment_status === "paid") {
+    // Só o e-mail não bastava: perdido o e-mail, o pedido seguia despachável
+    // (achado Codex, 07–08/10/2026). A trava fica gravada no pedido, o banco
+    // recusa etiqueta e despacho enquanto ela existir, e só um admin libera
+    // depois de conferir o PayPal (liberarTravaDespachoAction).
+    const { error: erroTrava } = await supabase
+      .from("orders")
+      .update({ dispatch_hold_reason: TRAVA_ESTORNO_PAYPAL, dispatch_hold_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .is("dispatch_hold_reason", null);
+    if (erroTrava) {
+      console.error("[paypal-captura] não gravou a trava de despacho", erroTrava);
+      return { estado: "indisponivel", motivo: "falha ao travar o despacho" };
+    }
     await avisar(`alerta-${origem.eventoGateway}`, `PayPal avisou estorno/disputa — ${numero}`, [
       "AVISO DE ESTORNO OU DISPUTA NO PAYPAL",
       "",
       `Evento: ${origem.eventoGateway}`,
       "A cobrança ainda aparece como concluída no PayPal, então o pedido segue pago no painel.",
-      "Confira a transação e as disputas no PayPal ANTES de despachar.",
+      "O DESPACHO FOI TRAVADO no painel até alguém conferir a transação e as disputas no PayPal.",
+      "Depois de conferir, libere a trava na página do pedido.",
     ]);
-    return { estado: "nada_a_fazer", detalhe: "aviso de estorno com captura concluída" };
+    return { estado: "nada_a_fazer", detalhe: "aviso de estorno com captura concluída: despacho travado" };
   }
 
   switch (estado.estado) {
@@ -211,6 +228,7 @@ export async function reavaliarCapturaPayPal(
         transactionId: paypalOrderId,
         eventId: origem.eventId ?? `conciliacao-${estado.estado}-${paypalOrderId}`,
       });
+      if (r === "indisponivel") return { estado: "indisponivel", motivo: "falha ao registrar estorno" };
       await avisar(estado.estado, `PayPal: pagamento ${estado.estado === "reembolsada" ? "reembolsado" : "estornado"} — ${numero}`, [
         estado.estado === "reembolsada" ? "PAGAMENTO REEMBOLSADO NO PAYPAL" : "PAGAMENTO ESTORNADO NO PAYPAL (disputa/chargeback)",
         "",
